@@ -1,0 +1,16 @@
+# Dépendances
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Secrets & config (NE JAMAIS COMMITTER)
+.streamlit/secrets.toml
+config.json
+
+# Système
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
