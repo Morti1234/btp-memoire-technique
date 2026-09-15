@@ -458,6 +458,29 @@ def _call_openai(api_key: str, system_prompt: str, user_content: str, model: str
         raise ValueError(f"❌ Erreur API OpenAI : {e.message}")
 
 
+
+
+def _call_deepseek(api_key: str, system_prompt: str, user_content: str) -> str:
+    """Appelle l'API DeepSeek via la librairie openai."""
+    from openai import OpenAI, AuthenticationError
+
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0.3,
+            max_tokens=8000,
+        )
+        return response.choices[0].message.content.strip()
+    except AuthenticationError:
+        raise ValueError("❌ Clé API DeepSeek invalide. Vérifiez vos réglages (ou vos secrets).")
+    except Exception as e:
+        raise ValueError(f"❌ Erreur DeepSeek : {e}")
+
 def _call_gemini(api_key: str, system_prompt: str, user_content: str, model: str = "gemini-2.0-flash") -> str:
     """Appelle l'API Google Gemini."""
     from google import genai
@@ -488,6 +511,8 @@ def call_llm(api_key: str, provider: str, system_prompt: str, user_content: str)
     """Dispatch vers le bon fournisseur LLM."""
     if "openai" in provider.lower():
         return _call_openai(api_key, system_prompt, user_content)
+    elif "deepseek" in provider.lower():
+        return _call_deepseek(api_key, system_prompt, user_content)
     else:
         return _call_gemini(api_key, system_prompt, user_content)
 
@@ -772,8 +797,8 @@ if page == "⚙️ Réglages":
     with st.form("form_reglages"):
         new_provider = st.selectbox(
             "Fournisseur LLM",
-            options=["OpenAI (GPT-4o)", "Google Gemini (gemini-2.0-flash)"],
-            index=0 if "openai" in config["llm_provider"].lower() else 1,
+            options=["OpenAI (GPT-4o)", "Google Gemini (gemini-2.0-flash)", "DeepSeek (deepseek-chat)"],
+            index=0 if "openai" in config["llm_provider"].lower() else (2 if "deepseek" in config["llm_provider"].lower() else 1),
             help="Choisissez le modèle IA à utiliser.",
         )
 
