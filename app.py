@@ -188,6 +188,51 @@ st.set_page_config(
     layout="wide",
 )
 
+
+# ─────────────────────────────────────────────────────────────────────────
+# 0.5 SÉCURITÉ - ACCÈS PRIVÉ PAR MOT DE PASSE
+# ─────────────────────────────────────────────────────────────────────────
+def check_password():
+    """Returns `True` if the user had the correct password."""
+    # Si aucun mot de passe n'est configuré dans les secrets, on laisse passer (pour le dev local)
+    if "app_password" not in st.secrets:
+        return True
+
+    def password_entered():
+        if st.session_state["password"] == st.secrets["app_password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # First run, show input for password.
+        st.text_input(
+            "🔒 Veuillez entrer le mot de passe pour accéder à l'application :",
+            type="password",
+            on_change=password_entered,
+            key="password"
+        )
+        return False
+    elif not st.session_state["password_correct"]:
+        # Password not correct, show input + error.
+        st.text_input(
+            "🔒 Veuillez entrer le mot de passe pour accéder à l'application :",
+            type="password",
+            on_change=password_entered,
+            key="password"
+        )
+        st.error("😕 Mot de passe incorrect")
+        return False
+    else:
+        # Password correct.
+        return True
+
+if not check_password():
+    st.stop()
+
+
+
 # Charger la config (secrets → config.json → défauts)
 config = load_config()
 
