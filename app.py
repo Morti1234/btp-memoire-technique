@@ -258,7 +258,7 @@ with st.sidebar:
 
     st.markdown("**Statut de la configuration**")
     st.markdown(f"{'✅' if api_ok else '❌'} Clé API configurée")
-    st.markdown(f"{'✅' if entreprise_ok else '⚠️'} Profil entreprise {'renseigné' if entreprise_ok else 'à compléter'}")
+    st.markdown(f"{'✅' if entreprise_ok else 'ℹ️'} Profil entreprise {'renseigné' if entreprise_ok else '(optionnel)'}")
 
     st.divider()
     st.caption("Agent IA Assistant de Chantier v2.1")
@@ -374,17 +374,29 @@ convaincante pour maximiser la note technique du dossier.
 
 On te fournit :
 1. L'analyse structurée (JSON) du CCTP.
-2. Le profil complet de l'entreprise candidate.
+2. Le profil de l'entreprise candidate (si disponible).
 
-Ta mission : rédiger un MÉMOIRE TECHNIQUE complet et professionnel.
+Ta mission : rédiger un MÉMOIRE TECHNIQUE complet, professionnel et PRÊT À L'EMPLOI.
+
+RÈGLE D'OR : Tu dois être OMNISCIENT. Même si le profil de l'entreprise est
+incomplet ou absent, tu dois rédiger un mémoire technique complet et crédible.
+Pour les informations manquantes de l'entreprise :
+- Rédige des sections génériques mais professionnelles et réalistes.
+- Propose des contenus types qu'une PME du BTP compétente inclurait.
+- Utilise des formulations comme "Notre entreprise", "Notre équipe", "Nos références".
+- NE METS JAMAIS de marqueurs [À COMPLÉTER]. Le document doit être prêt à être lu.
+- Déduis intelligemment le type d'entreprise nécessaire à partir du CCTP
+  (plomberie, électricité, gros œuvre, etc.) et rédige en conséquence.
 
 STRUCTURE OBLIGATOIRE du mémoire (utilise ces titres exacts) :
 
 # 1. PRÉSENTATION DE L'ENTREPRISE
-   - Présentation générale (utilise les vraies infos du profil fourni)
+   - Présentation générale (utilise les infos du profil si fournies, sinon rédige
+     une présentation type cohérente avec les lots du CCTP)
    - Moyens humains et organigramme de chantier
-   - Références et expériences similaires
-   - Certifications et qualifications (RGE, Qualibat…)
+   - Références et expériences similaires (propose des références crédibles
+     en rapport avec le type de projet du CCTP)
+   - Certifications et qualifications (RGE, Qualibat… adaptées au CCTP)
 
 # 2. COMPRÉHENSION DU PROJET
    - Analyse du contexte et des enjeux
@@ -402,7 +414,7 @@ STRUCTURE OBLIGATOIRE du mémoire (utilise ces titres exacts) :
 
 # 5. MOYENS MATÉRIELS ET MATÉRIAUX
    - Liste du matériel et équipements mobilisés
-   - Fiches techniques des matériaux proposés
+   - Fiches techniques des matériaux proposés (en utilisant ceux du CCTP)
    - Justification des choix techniques
 
 # 6. GESTION DE LA QUALITÉ
@@ -427,10 +439,11 @@ STRUCTURE OBLIGATOIRE du mémoire (utilise ces titres exacts) :
 CONSIGNES DE RÉDACTION :
 - Sois concret, précis et professionnel.
 - Utilise les matériaux et normes extraits du CCTP (fournis dans le JSON).
-- Personnalise le mémoire avec les VRAIES informations de l'entreprise.
-- Si une information de l'entreprise n'est pas disponible, mets [À COMPLÉTER].
+- Personnalise le mémoire avec les infos de l'entreprise SI elles sont fournies.
+- Si les infos ne sont pas fournies, rédige un contenu professionnel et réaliste.
+- NE METS JAMAIS de marqueurs [À COMPLÉTER] ou de crochets vides.
 - Vise un document de 3 000 à 5 000 mots.
-- N'invente PAS de chiffres (CA, effectif…) sans source. Utilise [À COMPLÉTER].
+- Le mémoire doit pouvoir être imprimé et soumis tel quel.
 """)
 
 
@@ -607,8 +620,11 @@ def rediger_memoire(
     else:
         user_content += (
             "## Profil de l'entreprise candidate\n"
-            "Aucun profil fourni. Utilise des marqueurs [À COMPLÉTER] pour toutes les "
-            "informations spécifiques à l'entreprise (nom, CA, effectif, références…).\n\n"
+            "Aucun profil spécifique fourni. Tu dois rédiger le mémoire technique de manière "
+            "autonome et omnisciente. Déduis le type d'entreprise nécessaire à partir du CCTP "
+            "(corps de métier, taille probable, qualifications requises) et rédige un profil "
+            "d'entreprise crédible et professionnel. Utilise 'Notre entreprise' comme nom. "
+            "Le mémoire doit être complet et prêt à être soumis sans aucune modification.\n\n"
         )
 
     user_content += "Rédige maintenant le Mémoire Technique complet en suivant la structure demandée."
@@ -969,12 +985,10 @@ elif page == "📄 Générer un Mémoire":
     if nom_ent:
         st.markdown(f"Bienvenue **{nom_ent}** · Uploadez votre CCTP et générez votre mémoire technique en un clic.")
     else:
-        st.markdown("Uploadez votre **CCTP** et l'IA générera un brouillon de **Mémoire Technique** au format Word.")
+        st.markdown("Uploadez votre **CCTP** et l'IA générera un **Mémoire Technique** complet et prêt à l'emploi.")
 
     if not config["api_key"].strip():
         st.warning("⚠️ **Clé API manquante.** Allez dans **⚙️ Réglages** pour la configurer.")
-    if not nom_ent:
-        st.info("💡 **Astuce** : renseignez votre profil dans **🏢 Mon Entreprise** pour des mémoires personnalisés.")
 
     st.divider()
 
@@ -1025,7 +1039,7 @@ elif page == "📄 Générer un Mémoire":
         if profil_text:
             st.info(f"🏢 Profil **{config['entreprise'].get('nom', '')}** utilisé automatiquement.")
         else:
-            st.warning("⚠️ Profil entreprise non renseigné → des marqueurs [À COMPLÉTER] seront insérés.")
+            st.info("🤖 **Mode autonome** : l'IA générera un mémoire complet en se basant uniquement sur le CCTP.")
 
         # ── Tâche A : Analyse du CCTP ──────────────────────────────────
         with st.status("🧠 Analyse IA du CCTP en cours…", expanded=True) as status:
@@ -1088,6 +1102,6 @@ elif page == "📄 Générer un Mémoire":
         )
 
         st.caption(
-            "💡 Ouvrez le fichier dans Word, complétez les éventuels [À COMPLÉTER], "
-            "ajoutez vos logos et photos, puis générez le sommaire automatique."
+            "💡 Ouvrez le fichier dans Word, personnalisez avec vos logos et photos, "
+            "puis générez le sommaire automatique (onglet Références → Table des matières)."
         )
