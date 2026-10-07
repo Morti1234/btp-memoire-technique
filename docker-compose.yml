@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  btp-agent:
+    build: .
+    ports:
+      - "8501:8501"
+    restart: always
+    volumes:
+      - ./.streamlit:/app/.streamlit
