@@ -24,6 +24,9 @@ import streamlit as st
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from fpdf import FPDF
+import markdown
+import base64
 
 # ─────────────────────────────────────────────────────────────────────────
 # 0. PERSISTENCE – Compatible local ET Streamlit Cloud
@@ -839,6 +842,73 @@ def generate_docx(memoire_text: str, analyse_json: dict, entreprise: dict) -> io
     buffer.seek(0)
     return buffer
 
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 8. GÉNÉRATION DU FICHIER PDF
+# ─────────────────────────────────────────────────────────────────────────
+def generate_pdf(memoire_text: str, analyse_json: dict, entreprise: dict) -> io.BytesIO:
+    class CustomPDF(FPDF):
+        def header(self):
+            nom_ent = entreprise.get("nom", "").strip()
+            if nom_ent:
+                self.set_font("Helvetica", "B", 10)
+                self.set_text_color(150, 150, 150)
+                self.cell(0, 10, nom_ent, 0, 1, "R")
+        
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Helvetica", "I", 8)
+            self.set_text_color(150, 150, 150)
+            self.cell(0, 10, f"Page {self.page_no()}", 0, 0, "C")
+
+    pdf = CustomPDF()
+    pdf.add_page()
+    
+    # Page de garde
+    pdf.set_font("Helvetica", "B", 24)
+    pdf.set_text_color(0, 51, 102)
+    pdf.ln(30)
+    pdf.cell(0, 15, "MÉMOIRE TECHNIQUE", 0, 1, "C")
+    
+    nom_projet = analyse_json.get("nom_projet", "Projet")
+    pdf.set_font("Helvetica", "", 16)
+    pdf.cell(0, 10, nom_projet, 0, 1, "C")
+    
+    mo = analyse_json.get("maitre_ouvrage", "")
+    if mo and mo != "Non spécifié":
+        pdf.set_font("Helvetica", "I", 12)
+        pdf.cell(0, 10, f"Maître d'ouvrage : {mo}", 0, 1, "C")
+        
+    pdf.ln(20)
+    nom_entreprise = entreprise.get("nom", "").strip()
+    if nom_entreprise:
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(0, 10, f"Présenté par : {nom_entreprise}", 0, 1, "C")
+    
+    pdf.ln(40)
+    date_str = datetime.now().strftime("%d/%m/%Y")
+    pdf.set_font("Helvetica", "", 12)
+    pdf.cell(0, 10, f"Date : {date_str}", 0, 1, "C")
+    
+    pdf.add_page()
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "", 11)
+    
+    # Rendu du Markdown via HTML
+    html_content = markdown.markdown(memoire_text)
+    
+    # fpdf2 write_html
+    try:
+        pdf.write_html(html_content)
+    except Exception as e:
+        pdf.multi_cell(0, 5, f"Erreur de conversion HTML vers PDF : {e}")
+        
+    buffer = io.BytesIO()
+    pdf.output(buffer)
+    buffer.seek(0)
+    return buffer
 
 # ═══════════════════════════════════════════════════════════════════════
 #  PAGES DE L'APPLICATION
