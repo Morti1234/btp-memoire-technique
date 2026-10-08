@@ -183,7 +183,7 @@ def build_profil_text(entreprise: dict) -> Optional[str]:
 # 1. CONFIGURATION DE LA PAGE STREAMLIT
 # ─────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Mémoire Technique BTP – Agent IA",
+    page_title="MarketBuilding Pro - Mémoire Technique",
     page_icon="🏗️",
     layout="wide",
 )
@@ -241,11 +241,11 @@ config = load_config()
 # ─────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/building-with-rooftop-terrace.png", width=80)
-    st.title("🏗️ Mon Assistant BTP")
+    st.title("MarketBuilding Pro")
 
     page = st.radio(
         "Navigation",
-        options=["📄 Générer un Mémoire", "🏢 Mon Entreprise", "⚙️ Réglages"],
+        options=["Génération", "Profil", "Paramètres"],
         index=0,
         label_visibility="collapsed",
     )
@@ -257,12 +257,12 @@ with st.sidebar:
     api_ok = bool(config["api_key"].strip())
 
     st.markdown("**Statut de la configuration**")
-    st.markdown(f"{'✅' if api_ok else '❌'} Clé API configurée")
+    st.markdown(f"{'✅' if api_ok else '❌'} Clé d'authentification système configurée")
     st.markdown(f"{'✅' if entreprise_ok else 'ℹ️'} Profil entreprise {'renseigné' if entreprise_ok else '(optionnel)'}")
 
     st.divider()
-    st.caption("Agent IA Assistant de Chantier v2.1")
-    st.caption("Hébergé sur Streamlit Cloud · Snowflake")
+    st.caption("MarketBuilding Engine v3.0")
+    st.caption("Système Sécurisé")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -465,7 +465,7 @@ def _call_openai(api_key: str, system_prompt: str, user_content: str, model: str
         return response.choices[0].message.content.strip()
     except AuthenticationError:
         raise ValueError(
-            "❌ Clé API OpenAI invalide. Allez dans ⚙️ Réglages pour la corriger."
+            "❌ Clé d'authentification système OpenAI invalide. Allez dans ⚙️ Réglages pour la corriger."
         )
     except APIError as e:
         raise ValueError(f"❌ Erreur API OpenAI : {e.message}")
@@ -490,7 +490,7 @@ def _call_deepseek(api_key: str, system_prompt: str, user_content: str) -> str:
         )
         return response.choices[0].message.content.strip()
     except AuthenticationError:
-        raise ValueError("❌ Clé API DeepSeek invalide. Vérifiez vos réglages (ou vos secrets).")
+        raise ValueError("❌ Clé d'authentification système DeepSeek invalide. Vérifiez vos réglages (ou vos secrets).")
     except Exception as e:
         raise ValueError(f"❌ Erreur DeepSeek : {e}")
 
@@ -515,7 +515,7 @@ def _call_gemini(api_key: str, system_prompt: str, user_content: str, model: str
         error_msg = str(e).lower()
         if "api key" in error_msg or "unauthorized" in error_msg or "403" in error_msg:
             raise ValueError(
-                "❌ Clé API Google Gemini invalide. Allez dans ⚙️ Réglages pour la corriger."
+                "❌ Clé d'authentification système Google Gemini invalide. Allez dans ⚙️ Réglages pour la corriger."
             )
         raise ValueError(f"❌ Erreur API Gemini : {e}")
 
@@ -787,8 +787,8 @@ def generate_docx(memoire_text: str, analyse_json: dict, entreprise: dict) -> io
 # ─────────────────────────────────────────────────────────────────────────
 # PAGE : ⚙️ RÉGLAGES
 # ─────────────────────────────────────────────────────────────────────────
-if page == "⚙️ Réglages":
-    st.title("⚙️ Réglages")
+if page == "Paramètres":
+    st.title("Paramètres")
     st.markdown(
         "Configurez votre clé API et votre fournisseur LLM.\n\n"
         "💡 **En cloud** : pour une persistance permanente, configurez vos secrets dans le "
@@ -812,14 +812,14 @@ if page == "⚙️ Réglages":
 
     with st.form("form_reglages"):
         new_provider = st.selectbox(
-            "Fournisseur LLM",
+            "Moteur de traitement",
             options=["OpenAI (GPT-4o)", "Google Gemini (gemini-2.0-flash)", "DeepSeek (deepseek-chat)"],
             index=0 if "openai" in config["llm_provider"].lower() else (2 if "deepseek" in config["llm_provider"].lower() else 1),
-            help="Choisissez le modèle IA à utiliser.",
+            help="Choisissez l'algorithme d'analyse à utiliser.",
         )
 
         new_api_key = st.text_input(
-            "🔑 Clé API",
+            "🔑 Clé d'authentification système",
             value=config["api_key"],
             type="password",
             help="En cloud, configurez plutôt vos secrets dans le dashboard Streamlit.",
@@ -840,7 +840,7 @@ if page == "⚙️ Réglages":
             "Dans le dashboard Streamlit Cloud → votre app → **Settings** → **Secrets**, "
             "collez le contenu suivant au format TOML :\n\n"
             "```toml\n"
-            '# Clé API et fournisseur\n'
+            '# Clé d'authentification système et fournisseur\n'
             'api_key = "sk-votre-cle-ici"\n'
             'llm_provider = "OpenAI (GPT-4o)"\n'
             "\n"
@@ -864,8 +864,8 @@ if page == "⚙️ Réglages":
 # ─────────────────────────────────────────────────────────────────────────
 # PAGE : 🏢 MON ENTREPRISE
 # ─────────────────────────────────────────────────────────────────────────
-elif page == "🏢 Mon Entreprise":
-    st.title("🏢 Mon Entreprise")
+elif page == "Profil":
+    st.title("Profil")
     st.markdown(
         "Renseignez les informations de votre entreprise. "
         "Elles seront automatiquement intégrées dans chaque mémoire technique.\n\n"
@@ -958,7 +958,7 @@ elif page == "🏢 Mon Entreprise":
     # Aperçu du profil
     profil_preview = build_profil_text(ent)
     if profil_preview:
-        with st.expander("👁️ Aperçu du profil tel qu'il sera transmis à l'IA"):
+        with st.expander("👁️ Aperçu du profil tel qu'il sera intégré au document"):
             st.markdown(profil_preview)
 
     # Bouton d'export TOML pour faciliter la copie dans les secrets cloud
@@ -978,17 +978,17 @@ elif page == "🏢 Mon Entreprise":
 # ─────────────────────────────────────────────────────────────────────────
 # PAGE : 📄 GÉNÉRER UN MÉMOIRE
 # ─────────────────────────────────────────────────────────────────────────
-elif page == "📄 Générer un Mémoire":
-    st.title("🏗️ Générateur de Mémoire Technique")
+elif page == "Génération":
+    st.title("Générateur de Mémoires Techniques")
 
     nom_ent = config["entreprise"].get("nom", "").strip()
     if nom_ent:
         st.markdown(f"Bienvenue **{nom_ent}** · Uploadez votre CCTP et générez votre mémoire technique en un clic.")
     else:
-        st.markdown("Uploadez votre **CCTP** et l'IA générera un **Mémoire Technique** complet et prêt à l'emploi.")
+        st.markdown("Uploadez votre **CCTP** et le système générera un **Mémoire Technique** complet et prêt à l'emploi.")
 
     if not config["api_key"].strip():
-        st.warning("⚠️ **Clé API manquante.** Allez dans **⚙️ Réglages** pour la configurer.")
+        st.warning("⚠️ **Clé d'authentification système manquante.** Allez dans **⚙️ Réglages** pour la configurer.")
 
     st.divider()
 
@@ -1013,7 +1013,7 @@ elif page == "📄 Générer un Mémoire":
         llm_provider = config["llm_provider"]
 
         if not api_key:
-            st.error("❌ Clé API manquante. Allez dans **⚙️ Réglages** pour la configurer.")
+            st.error("❌ Clé d'authentification système manquante. Allez dans **⚙️ Réglages** pour la configurer.")
             st.stop()
 
         if not cctp_file:
@@ -1039,16 +1039,16 @@ elif page == "📄 Générer un Mémoire":
         if profil_text:
             st.info(f"🏢 Profil **{config['entreprise'].get('nom', '')}** utilisé automatiquement.")
         else:
-            st.info("🤖 **Mode autonome** : l'IA générera un mémoire complet en se basant uniquement sur le CCTP.")
+            st.info("⚙️ **Mode autonome** : le système générera un mémoire complet en se basant uniquement sur le CCTP.")
 
         # ── Tâche A : Analyse du CCTP ──────────────────────────────────
-        with st.status("🧠 Analyse IA du CCTP en cours…", expanded=True) as status:
+        with st.status("Analyse sémantique du CCTP en cours…", expanded=True) as status:
             try:
                 nb_chunks = len(chunk_text(cctp_text))
                 if nb_chunks > 1:
                     st.write(f"Document volumineux → découpage en {nb_chunks} parties pour l'analyse.")
 
-                st.write("Envoi au LLM pour extraction des exigences…")
+                st.write("Extraction algorithmique des exigences techniques des exigences…")
                 analyse = analyse_cctp(api_key, llm_provider, cctp_text)
                 st.write("✅ Analyse terminée.")
                 status.update(label="✅ Analyse du CCTP terminée", state="complete")
@@ -1063,7 +1063,7 @@ elif page == "📄 Générer un Mémoire":
         # ── Tâche B : Rédaction du Mémoire ──────────────────────────────
         with st.status("✍️ Rédaction du Mémoire Technique…", expanded=True) as status:
             try:
-                st.write("Le LLM rédige votre mémoire technique personnalisé…")
+                st.write("Compilation et formatage du document final personnalisé…")
                 memoire_md = rediger_memoire(api_key, llm_provider, analyse, profil_text)
                 st.write("✅ Rédaction terminée.")
                 status.update(label="✅ Mémoire Technique rédigé", state="complete")
@@ -1087,7 +1087,7 @@ elif page == "📄 Générer un Mémoire":
 
         # ── Bouton de téléchargement ────────────────────────────────────
         st.divider()
-        st.success("🎉 Votre Mémoire Technique est prêt !")
+        st.success("🎉 Document généré avec succès.")
 
         nom_fichier = re.sub(r"[^\w\s-]", "", analyse.get("nom_projet", "Memoire_Technique"))
         nom_fichier = nom_fichier.strip().replace(" ", "_")[:60]
