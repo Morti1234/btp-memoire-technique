@@ -207,21 +207,27 @@ def check_password():
 
     if "password_correct" not in st.session_state:
         # First run, show input for password.
+        st.markdown('<div class="password-screen">', unsafe_allow_html=True)
         st.text_input(
-            "🔒 Veuillez entrer le mot de passe pour accéder à l'application :",
+            "🔑 Accès sécurisé :",
+            placeholder="Entrez votre mot de passe...",
             type="password",
             on_change=password_entered,
             key="password"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
         return False
     elif not st.session_state["password_correct"]:
         # Password not correct, show input + error.
+        st.markdown('<div class="password-screen">', unsafe_allow_html=True)
         st.text_input(
-            "🔒 Veuillez entrer le mot de passe pour accéder à l'application :",
+            "🔑 Accès sécurisé :",
+            placeholder="Entrez votre mot de passe...",
             type="password",
             on_change=password_entered,
             key="password"
         )
+        st.markdown('</div>', unsafe_allow_html=True)
         st.error("😕 Mot de passe incorrect")
         return False
     else:
@@ -234,14 +240,64 @@ if not check_password():
 
 
 # Charger la config (secrets → config.json → défauts)
+
+# ─────────────────────────────────────────────────────────────────────────
+# 0.7 INJECTION CSS (MODERNISATION & MINIMALISME)
+# ─────────────────────────────────────────────────────────────────────────
+def inject_custom_css():
+    st.markdown('''
+        <style>
+            /* Masquer les éléments par défaut de Streamlit (Menu, Footer, Header) */
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            
+            /* Réduire la marge en haut de l'écran */
+            .block-container {
+                padding-top: 2rem !important;
+                padding-bottom: 2rem !important;
+                max-width: 1000px;
+            }
+            
+            /* Améliorer les bordures et ombres des conteneurs (minimalisme) */
+            div[data-testid="stForm"] {
+                border-radius: 12px;
+                border: 1px solid #333;
+                background-color: #12151b;
+            }
+            
+            /* Styliser l'écran de mot de passe pour faire "Login Screen" */
+            .password-screen {
+                max-width: 400px;
+                margin: 100px auto;
+                text-align: center;
+            }
+        </style>
+    ''', unsafe_allow_html=True)
+
+inject_custom_css()
+
+MARKETBUILDING_LOGO_SVG = '''
+<svg width="100%" height="80" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+  <!-- Lettre M stylisée sous forme de bâtiments -->
+  <path d="M20,60 L20,30 L40,10 L60,30 L80,10 L100,30 L100,60 Z" fill="none" stroke="#fafafa" stroke-width="4" stroke-linejoin="round"/>
+  <rect x="30" y="40" width="8" height="8" fill="#fafafa" />
+  <rect x="50" y="40" width="8" height="8" fill="#fafafa" />
+  <rect x="70" y="40" width="8" height="8" fill="#fafafa" />
+  <!-- Texte du Logo -->
+  <text x="120" y="40" font-family="sans-serif" font-size="20" font-weight="bold" fill="#fafafa" letter-spacing="1">Market</text>
+  <text x="120" y="60" font-family="sans-serif" font-size="20" font-weight="300" fill="#a0a0a0" letter-spacing="1">Building</text>
+</svg>
+'''
+
 config = load_config()
 
 # ─────────────────────────────────────────────────────────────────────────
 # 2. BARRE LATERALE – Navigation par onglets
 # ─────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/building-with-rooftop-terrace.png", width=80)
-    st.title("MarketBuilding Pro")
+    st.markdown(MARKETBUILDING_LOGO_SVG, unsafe_allow_html=True)
+    # st.title("MarketBuilding Pro")
 
     page = st.radio(
         "Navigation",
@@ -840,7 +896,7 @@ if page == "Paramètres":
             "Dans le dashboard Streamlit Cloud → votre app → **Settings** → **Secrets**, "
             "collez le contenu suivant au format TOML :\n\n"
             "```toml\n"
-            '# Clé d'authentification système et fournisseur\n'
+            "# Clé d'authentification système et fournisseur\n"
             'api_key = "sk-votre-cle-ici"\n'
             'llm_provider = "OpenAI (GPT-4o)"\n'
             "\n"
