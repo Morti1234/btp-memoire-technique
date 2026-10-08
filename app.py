@@ -521,7 +521,7 @@ def _call_openai(api_key: str, system_prompt: str, user_content: str, model: str
         return response.choices[0].message.content.strip()
     except AuthenticationError:
         raise ValueError(
-            "❌ Clé d'authentification système OpenAI invalide. Allez dans ⚙️ Réglages pour la corriger."
+            "❌ Clé d'authentification système OpenAI invalide. Allez dans Paramètres pour la corriger."
         )
     except APIError as e:
         raise ValueError(f"❌ Erreur API OpenAI : {e.message}")
@@ -571,7 +571,7 @@ def _call_gemini(api_key: str, system_prompt: str, user_content: str, model: str
         error_msg = str(e).lower()
         if "api key" in error_msg or "unauthorized" in error_msg or "403" in error_msg:
             raise ValueError(
-                "❌ Clé d'authentification système Google Gemini invalide. Allez dans ⚙️ Réglages pour la corriger."
+                "❌ Clé d'authentification système Google Gemini invalide. Allez dans Paramètres pour la corriger."
             )
         raise ValueError(f"❌ Erreur API Gemini : {e}")
 
@@ -927,7 +927,7 @@ elif page == "Profil":
         "Elles seront automatiquement intégrées dans chaque mémoire technique.\n\n"
         "💡 **En cloud** : ces données sont conservées pour la session en cours. "
         "Pour les rendre permanentes, copiez-les dans les [Secrets Streamlit Cloud]"
-        "(voir ⚙️ Réglages)."
+        "(voir Paramètres)."
     )
 
     st.divider()
@@ -1044,7 +1044,7 @@ elif page == "Génération":
         st.markdown("Uploadez votre **CCTP** et le système générera un **Mémoire Technique** complet et prêt à l'emploi.")
 
     if not config["api_key"].strip():
-        st.warning("⚠️ **Clé d'authentification système manquante.** Allez dans **⚙️ Réglages** pour la configurer.")
+        st.warning("⚠️ **Clé d'authentification système manquante.** Allez dans **Paramètres** pour la configurer.")
 
     st.divider()
 
@@ -1069,7 +1069,7 @@ elif page == "Génération":
         llm_provider = config["llm_provider"]
 
         if not api_key:
-            st.error("❌ Clé d'authentification système manquante. Allez dans **⚙️ Réglages** pour la configurer.")
+            st.error("❌ Clé d'authentification système manquante. Allez dans **Paramètres** pour la configurer.")
             st.stop()
 
         if not cctp_file:
