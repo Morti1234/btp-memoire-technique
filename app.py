@@ -308,7 +308,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        options=["Génération", "Profil", "Paramètres"],
+        options=["Génération", "Profil", "Archives", "Paramètres"],
         index=0,
         label_visibility="collapsed",
     )
@@ -1010,6 +1010,18 @@ elif page == "Profil":
 
     with st.form("form_entreprise"):
         st.subheader("📋 Identité")
+
+        # ── Sauvegarde dans les archives ────────────────────────
+        os.makedirs("archives", exist_ok=True)
+        date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        pdf_path = f"archives/Memoire_{nom_fichier}_{date_str}.pdf"
+        docx_path = f"archives/Memoire_{nom_fichier}_{date_str}.docx"
+        
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_buffer.getvalue())
+        with open(docx_path, "wb") as f:
+            f.write(docx_buffer.getvalue())
+            
         col1, col2 = st.columns(2)
         with col1:
             ent["nom"] = st.text_input("Nom de l'entreprise *", value=ent.get("nom", ""))
