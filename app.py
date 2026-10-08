@@ -441,8 +441,9 @@ On te fournit :
 
 Ta mission : rédiger un MÉMOIRE TECHNIQUE complet, professionnel et PRÊT À L'EMPLOI.
 
-RÈGLE D'OR ABSOLUE : Tu ne DOIS PAS faire un simple résumé du CCTP ou te contenter de lister ce qui est demandé.
-Tu DOIS rédiger une VÉRITABLE OFFRE TECHNIQUE ET COMMERCIALE (Le Mémoire Technique) du point de vue de l'entreprise candidate qui répond à l'appel d'offres.
+RÈGLE D'OR ABSOLUE :
+1. ADAPTATION TOTALE AU CLIENT : Tu dois te baser en priorité sur les informations fournies dans la section "Profil de l'entreprise candidate". Le mémoire technique doit donner l'impression d'avoir été écrit SPÉCIFIQUEMENT pour cette entreprise (utilise son vrai nom, son adresse, ses spécificités si elles sont fournies).
+2. PAS DE RÉSUMÉ : Tu ne DOIS PAS faire un simple résumé du CCTP. Tu DOIS rédiger une VÉRITABLE OFFRE TECHNIQUE ET COMMERCIALE du point de vue de l''entreprise candidate qui répond à l'appel d'offres.
 - Utilise systématiquement le pronom "Nous" ou "Notre entreprise".
 - Argumente, explique COMMENT l'entreprise va réaliser les travaux, avec quelles méthodes, pour prouver son expertise.
 - Sois très convaincant, professionnel, détaillé et orienté "solutions". C'est un document pour GAGNER un marché.
