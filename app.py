@@ -250,7 +250,11 @@ def inject_custom_css():
             /* Masquer les éléments par défaut de Streamlit (Menu, Footer, Header) */
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
-            header {visibility: hidden;}
+            
+            /* Conserver le header mais masquer le bouton Deploy et le menu droite */
+            .stAppDeployButton {display: none;}
+            [data-testid="stHeader"] {background: transparent;}
+
             
             /* Réduire la marge en haut de l'écran */
             .block-container {
