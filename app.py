@@ -285,45 +285,75 @@ def inject_custom_css():
 inject_custom_css()
 
 MARKETBUILDING_LOGO_SVG = '''
-<div style="text-align:center; padding: 12px 0;">
-<svg width="200" height="90" viewBox="0 0 200 90" xmlns="http://www.w3.org/2000/svg">
+<div style="text-align:center; padding: 10px 0;">
+<svg width="210" height="95" viewBox="0 0 210 95" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#1E40AF;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="grad2" x1="0%" y1="100%" x2="0%" y2="0%">
-      <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:0.6" />
-      <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1E3A5F;stop-opacity:1" />
     </linearGradient>
   </defs>
-  <!-- Icône : Bouclier avec silhouette de bâtiments -->
-  <path d="M30,8 L55,2 L80,8 L80,40 C80,58 55,68 55,68 C55,68 30,58 30,40 Z" fill="url(#grad1)" rx="3"/>
-  <!-- Bâtiments à l'intérieur du bouclier -->
-  <rect x="40" y="28" width="8" height="28" rx="1" fill="rgba(255,255,255,0.9)"/>
-  <rect x="50" y="18" width="10" height="38" rx="1" fill="rgba(255,255,255,0.95)"/>
-  <rect x="62" y="24" width="8" height="32" rx="1" fill="rgba(255,255,255,0.85)"/>
-  <!-- Fenêtres -->
-  <rect x="42" y="32" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
-  <rect x="42" y="38" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
-  <rect x="42" y="44" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
-  <rect x="53" y="22" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
-  <rect x="53" y="28" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
-  <rect x="53" y="34" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
-  <rect x="53" y="40" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
-  <rect x="64" y="28" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
-  <rect x="64" y="34" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
-  <rect x="64" y="40" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+
+  <!-- Bâtiment 1 (petit, gauche) -->
+  <rect x="12" y="32" width="16" height="36" rx="1" fill="#3B82F6"/>
+  <rect x="15" y="36" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="21" y="36" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="15" y="43" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="21" y="43" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="15" y="50" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="21" y="50" width="4" height="4" rx="0.5" fill="#0e1117"/>
+
+  <!-- Bâtiment 2 (grand, centre) -->
+  <rect x="31" y="14" width="22" height="54" rx="1" fill="#2563EB"/>
+  <rect x="35" y="18" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="42" y="18" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="35" y="25" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="42" y="25" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="35" y="32" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="42" y="32" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="35" y="39" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="42" y="39" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="35" y="46" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="42" y="46" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="35" y="53" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="42" y="53" width="4" height="4" rx="0.5" fill="#0e1117"/>
+
+  <!-- Bâtiment 3 (moyen, droite) -->
+  <rect x="56" y="26" width="18" height="42" rx="1" fill="#60A5FA"/>
+  <rect x="59" y="30" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="66" y="30" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="59" y="37" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="66" y="37" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="59" y="44" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="66" y="44" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="59" y="51" width="4" height="4" rx="0.5" fill="#0e1117"/>
+  <rect x="66" y="51" width="4" height="4" rx="0.5" fill="#0e1117"/>
+
+  <!-- Grue de chantier -->
+  <line x1="78" y1="68" x2="78" y2="6" stroke="#F59E0B" stroke-width="2.5"/>
+  <line x1="78" y1="6" x2="56" y2="6" stroke="#F59E0B" stroke-width="2"/>
+  <line x1="78" y1="6" x2="88" y2="6" stroke="#F59E0B" stroke-width="2"/>
+  <!-- Câble de la grue -->
+  <line x1="60" y1="6" x2="60" y2="18" stroke="#F59E0B" stroke-width="1" stroke-dasharray="2,1"/>
+  <!-- Contrepoids -->
+  <rect x="84" y="4" width="6" height="5" rx="1" fill="#D97706"/>
+  <!-- Base grue -->
+  <rect x="73" y="64" width="10" height="4" rx="1" fill="#D97706"/>
+
+  <!-- Sol -->
+  <line x1="5" y1="68" x2="90" y2="68" stroke="#475569" stroke-width="1.5"/>
+
   <!-- Typographie -->
-  <text x="95" y="35" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff" letter-spacing="0.5">Market</text>
-  <text x="95" y="55" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="300" fill="#94A3B8" letter-spacing="0.5">Building</text>
-  <!-- Ligne décorative -->
-  <line x1="95" y1="62" x2="185" y2="62" stroke="#3B82F6" stroke-width="1.5" opacity="0.5"/>
+  <text x="100" y="36" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="19" font-weight="700" fill="#ffffff" letter-spacing="0.5">Market</text>
+  <text x="100" y="56" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="19" font-weight="300" fill="#94A3B8" letter-spacing="0.5">Building</text>
+  <!-- Ligne déco -->
+  <line x1="100" y1="63" x2="200" y2="63" stroke="#F59E0B" stroke-width="1.5" opacity="0.6"/>
   <!-- Tagline -->
-  <text x="95" y="75" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="7" fill="#64748B" letter-spacing="2" text-transform="uppercase">SOLUTIONS BTP INTELLIGENTES</text>
+  <text x="100" y="76" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="7" fill="#64748B" letter-spacing="1.5">MÉMOIRES TECHNIQUES BTP</text>
 </svg>
 </div>
 '''
+
 
 
 config = load_config()
