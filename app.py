@@ -1017,17 +1017,6 @@ elif page == "Profil":
     with st.form("form_entreprise"):
         st.subheader("📋 Identité")
 
-        # ── Sauvegarde dans les archives ────────────────────────
-        os.makedirs("archives", exist_ok=True)
-        date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-        pdf_path = f"archives/Memoire_{nom_fichier}_{date_str}.pdf"
-        docx_path = f"archives/Memoire_{nom_fichier}_{date_str}.docx"
-        
-        with open(pdf_path, "wb") as f:
-            f.write(pdf_buffer.getvalue())
-        with open(docx_path, "wb") as f:
-            f.write(docx_buffer.getvalue())
-            
         col1, col2 = st.columns(2)
         with col1:
             ent["nom"] = st.text_input("Nom de l'entreprise *", value=ent.get("nom", ""))
@@ -1223,33 +1212,57 @@ elif page == "Génération":
         with st.expander("📝 Aperçu du Mémoire Technique (Markdown)", expanded=True):
             st.markdown(memoire_md)
 
-        # ── Génération du fichier Word ──────────────────────────────────
-        with st.status("📄 Génération du fichier Word…", expanded=True) as status:
+        # ── Génération des fichiers Word et PDF ────────────────────────
+        with st.status("📄 Compilation et formatage du document final…", expanded=True) as status:
             try:
                 docx_buffer = generate_docx(memoire_md, analyse, config["entreprise"])
-                status.update(label="✅ Fichier Word généré", state="complete")
+                pdf_buffer = generate_pdf(memoire_md, analyse, config["entreprise"])
+                status.update(label="✅ Document généré avec succès", state="complete")
             except Exception as e:
-                status.update(label="❌ Erreur de génération Word", state="error")
-                st.error(f"Erreur lors de la génération du fichier Word : {e}")
+                status.update(label="❌ Erreur de formatage", state="error")
+                st.error(f"Erreur lors de la génération du document : {e}")
                 st.stop()
 
-        # ── Bouton de téléchargement ────────────────────────────────────
+        # ── Boutons de téléchargement ────────────────────────────────────
         st.divider()
         st.success("🎉 Document généré avec succès.")
 
         nom_fichier = re.sub(r"[^\w\s-]", "", analyse.get("nom_projet", "Memoire_Technique"))
         nom_fichier = nom_fichier.strip().replace(" ", "_")[:60]
 
-        st.download_button(
-            label="📥 Télécharger le Mémoire Technique (.docx)",
-            data=docx_buffer,
-            file_name=f"Memoire_Technique_{nom_fichier}_{datetime.now().strftime('%Y%m%d')}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            type="primary",
-            use_container_width=True,
-        )
+        # Sauvegarde automatique dans les archives
+        os.makedirs("archives", exist_ok=True)
+        date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        with open(f"archives/Memoire_{nom_fichier}_{date_str}.pdf", "wb") as f:
+            f.write(pdf_buffer.getvalue())
+        with open(f"archives/Memoire_{nom_fichier}_{date_str}.docx", "wb") as f:
+            f.write(docx_buffer.getvalue())
 
-        st.caption(
-            "💡 Ouvrez le fichier dans Word, personnalisez avec vos logos et photos, "
-            "puis générez le sommaire automatique (onglet Références → Table des matières)."
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                label="📥 Télécharger en PDF",
+                data=pdf_buffer,
+                file_name=f"Memoire_Technique_{nom_fichier}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True,
+            )
+        with col2:
+            st.download_button(
+                label="📝 Télécharger en Word (.docx)",
+                data=docx_buffer,
+                file_name=f"Memoire_Technique_{nom_fichier}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+            )
+
+        st.caption("💡 Le format Word vous permet d'ajouter le logo de l'entreprise ou des photos de chantier avant envoi.")
+
+        # ── Prévisualisation PDF intégrée ────────────────────────
+        st.subheader("👁️ Aperçu du document PDF")
+        pdf_buffer.seek(0)
+        b64_pdf = base64.b64encode(pdf_buffer.read()).decode('utf-8')
+        pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}#view=FitH" width="100%" height="800" type="application/pdf"></iframe>'
+        st.markdown(pdf_display, unsafe_allow_html=True)
+
