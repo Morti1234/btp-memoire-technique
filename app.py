@@ -285,17 +285,46 @@ def inject_custom_css():
 inject_custom_css()
 
 MARKETBUILDING_LOGO_SVG = '''
-<svg width="100%" height="80" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
-  <!-- Lettre M stylisée sous forme de bâtiments -->
-  <path d="M20,60 L20,30 L40,10 L60,30 L80,10 L100,30 L100,60 Z" fill="none" stroke="#fafafa" stroke-width="4" stroke-linejoin="round"/>
-  <rect x="30" y="40" width="8" height="8" fill="#fafafa" />
-  <rect x="50" y="40" width="8" height="8" fill="#fafafa" />
-  <rect x="70" y="40" width="8" height="8" fill="#fafafa" />
-  <!-- Texte du Logo -->
-  <text x="120" y="40" font-family="sans-serif" font-size="20" font-weight="bold" fill="#fafafa" letter-spacing="1">Market</text>
-  <text x="120" y="60" font-family="sans-serif" font-size="20" font-weight="300" fill="#a0a0a0" letter-spacing="1">Building</text>
+<div style="text-align:center; padding: 12px 0;">
+<svg width="200" height="90" viewBox="0 0 200 90" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1E40AF;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:0.6" />
+      <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Icône : Bouclier avec silhouette de bâtiments -->
+  <path d="M30,8 L55,2 L80,8 L80,40 C80,58 55,68 55,68 C55,68 30,58 30,40 Z" fill="url(#grad1)" rx="3"/>
+  <!-- Bâtiments à l'intérieur du bouclier -->
+  <rect x="40" y="28" width="8" height="28" rx="1" fill="rgba(255,255,255,0.9)"/>
+  <rect x="50" y="18" width="10" height="38" rx="1" fill="rgba(255,255,255,0.95)"/>
+  <rect x="62" y="24" width="8" height="32" rx="1" fill="rgba(255,255,255,0.85)"/>
+  <!-- Fenêtres -->
+  <rect x="42" y="32" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+  <rect x="42" y="38" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+  <rect x="42" y="44" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+  <rect x="53" y="22" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+  <rect x="53" y="28" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+  <rect x="53" y="34" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+  <rect x="53" y="40" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+  <rect x="64" y="28" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+  <rect x="64" y="34" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+  <rect x="64" y="40" width="3" height="3" rx="0.5" fill="url(#grad1)"/>
+  <!-- Typographie -->
+  <text x="95" y="35" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="700" fill="#ffffff" letter-spacing="0.5">Market</text>
+  <text x="95" y="55" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="300" fill="#94A3B8" letter-spacing="0.5">Building</text>
+  <!-- Ligne décorative -->
+  <line x1="95" y1="62" x2="185" y2="62" stroke="#3B82F6" stroke-width="1.5" opacity="0.5"/>
+  <!-- Tagline -->
+  <text x="95" y="75" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="7" fill="#64748B" letter-spacing="2" text-transform="uppercase">SOLUTIONS BTP INTELLIGENTES</text>
 </svg>
+</div>
 '''
+
 
 config = load_config()
 
