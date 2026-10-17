@@ -910,66 +910,163 @@ def generate_docx(memoire_text: str, analyse_json: dict, entreprise: dict) -> io
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 8. GÉNÉRATION DU FICHIER PDF
+# 8. GÉNÉRATION DU FICHIER PDF (HAUTE QUALITÉ)
 # ─────────────────────────────────────────────────────────────────────────
 def generate_pdf(memoire_text: str, analyse_json: dict, entreprise: dict) -> io.BytesIO:
-    class CustomPDF(FPDF):
-        def header(self):
-            nom_ent = entreprise.get("nom", "").strip()
-            if nom_ent:
-                self.set_font("Helvetica", "B", 10)
-                self.set_text_color(150, 150, 150)
-                self.cell(0, 10, nom_ent, 0, 1, "R")
-        
-        def footer(self):
-            self.set_y(-15)
-            self.set_font("Helvetica", "I", 8)
-            self.set_text_color(150, 150, 150)
-            self.cell(0, 10, f"Page {self.page_no()}", 0, 0, "C")
+    font_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+    reg_font = os.path.join(font_dir, "CustomFont-Regular.ttf")
+    bold_font = os.path.join(font_dir, "CustomFont-Bold.ttf")
+    italic_font = os.path.join(font_dir, "CustomFont-Italic.ttf")
 
-    pdf = CustomPDF()
+    nom_entreprise = entreprise.get("nom", "").strip() or "MarketBuilding"
+    nom_projet = analyse_json.get("nom_projet", "Projet BTP").strip()
+
+    class ExecutiveBTPPDF(FPDF):
+        def __init__(self):
+            super().__init__()
+            if os.path.exists(reg_font) and os.path.exists(bold_font) and os.path.exists(italic_font):
+                self.add_font("AppFont", "", reg_font)
+                self.add_font("AppFont", "B", bold_font)
+                self.add_font("AppFont", "I", italic_font)
+                self.main_font = "AppFont"
+            else:
+                self.main_font = "Helvetica"
+
+        def header(self):
+            if self.page_no() > 1:
+                self.set_font(self.main_font, "B", 8)
+                self.set_text_color(30, 64, 175)
+                self.cell(90, 8, nom_entreprise.upper(), align="L")
+                self.set_font(self.main_font, "I", 8)
+                self.set_text_color(100, 116, 139)
+                proj_title = (nom_projet[:45] + "...") if len(nom_projet) > 45 else nom_projet
+                self.cell(0, 8, f"Mémoire Technique - {proj_title}", align="R", new_x="LMARGIN", new_y="NEXT")
+                self.set_draw_color(203, 213, 225)
+                self.set_line_width(0.3)
+                self.line(10, 18, 200, 18)
+                self.ln(5)
+
+        def footer(self):
+            if self.page_no() > 1:
+                self.set_y(-15)
+                self.set_font(self.main_font, "I", 7)
+                self.set_text_color(148, 163, 184)
+                self.cell(100, 10, "Document confidentiel - Remis dans le cadre de la consultation", align="L")
+                self.set_font(self.main_font, "", 8)
+                self.cell(0, 10, f"Page {self.page_no()}", align="R")
+
+    pdf = ExecutiveBTPPDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+
+    # ── Page de garde ───────────────────────────────────────────────────
     pdf.add_page()
-    
-    # Page de garde
-    pdf.set_font("Helvetica", "B", 24)
-    pdf.set_text_color(0, 51, 102)
-    pdf.ln(30)
-    pdf.cell(0, 15, "MÉMOIRE TECHNIQUE", 0, 1, "C")
-    
-    nom_projet = analyse_json.get("nom_projet", "Projet")
-    pdf.set_font("Helvetica", "", 16)
-    pdf.cell(0, 10, nom_projet, 0, 1, "C")
-    
-    mo = analyse_json.get("maitre_ouvrage", "")
+
+    # Bandeau supérieur
+    pdf.set_fill_color(30, 58, 138)
+    pdf.rect(0, 0, 210, 36, "F")
+    pdf.set_xy(15, 11)
+    pdf.set_font(pdf.main_font, "B", 11)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(0, 6, "RÉPONSE À CONSULTATION - MARCHÉS DU BTP", align="L", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(15)
+    pdf.set_font(pdf.main_font, "I", 8)
+    pdf.set_text_color(224, 231, 255)
+    pdf.cell(0, 5, "DOSSIER D'OFFRE TECHNIQUE & MÉTHODOLOGIQUE", align="L", new_x="LMARGIN", new_y="NEXT")
+
+    # Titre central
+    pdf.set_y(65)
+    pdf.set_font(pdf.main_font, "B", 24)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 12, "MÉMOIRE TECHNIQUE", align="C", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_draw_color(59, 130, 246)
+    pdf.set_line_width(0.8)
+    pdf.line(75, 80, 135, 80)
+    pdf.ln(12)
+
+    # Nom du projet
+    pdf.set_font(pdf.main_font, "B", 14)
+    pdf.set_text_color(30, 64, 175)
+    pdf.multi_cell(0, 7, nom_projet, align="C")
+    pdf.ln(6)
+
+    # Maître d'ouvrage
+    mo = analyse_json.get("maitre_ouvrage", "").strip()
     if mo and mo != "Non spécifié":
-        pdf.set_font("Helvetica", "I", 12)
-        pdf.cell(0, 10, f"Maître d'ouvrage : {mo}", 0, 1, "C")
-        
-    pdf.ln(20)
-    nom_entreprise = entreprise.get("nom", "").strip()
-    if nom_entreprise:
-        pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 10, f"Présenté par : {nom_entreprise}", 0, 1, "C")
-    
-    pdf.ln(40)
+        pdf.set_font(pdf.main_font, "I", 10)
+        pdf.set_text_color(71, 85, 105)
+        pdf.cell(0, 6, f"Maître d'ouvrage : {mo}", align="C", new_x="LMARGIN", new_y="NEXT")
+
+    # Encadré Entreprise Soumissionnaire
+    pdf.set_y(145)
+    pdf.set_draw_color(226, 232, 240)
+    pdf.set_fill_color(248, 250, 252)
+    pdf.rect(20, 145, 170, 80, "DF")
+
+    pdf.set_xy(30, 152)
+    pdf.set_font(pdf.main_font, "B", 10)
+    pdf.set_text_color(30, 64, 175)
+    pdf.cell(0, 6, "ENTREPRISE CANDIDATE", align="L", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_x(30)
+    pdf.set_font(pdf.main_font, "B", 13)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 8, nom_entreprise, align="L", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_x(30)
+    pdf.set_font(pdf.main_font, "", 9)
+    pdf.set_text_color(71, 85, 105)
+
+    forme_siret = []
+    if entreprise.get("forme_juridique"):
+        forme_siret.append(entreprise["forme_juridique"])
+    if entreprise.get("siret"):
+        forme_siret.append(f"SIRET : {entreprise['siret']}")
+    if forme_siret:
+        pdf.cell(0, 5, " | ".join(forme_siret), align="L", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_x(30)
+
+    if entreprise.get("adresse"):
+        pdf.cell(0, 5, f"Adresse : {entreprise['adresse']}", align="L", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_x(30)
+
+    contact_parts = []
+    if entreprise.get("telephone"):
+        contact_parts.append(entreprise["telephone"])
+    if entreprise.get("email"):
+        contact_parts.append(entreprise["email"])
+    if contact_parts:
+        pdf.cell(0, 5, f"Contact : {' | '.join(contact_parts)}", align="L", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_x(30)
+
+    if entreprise.get("activites_principales"):
+        act = entreprise["activites_principales"][:100]
+        pdf.cell(0, 5, f"Activités : {act}", align="L", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_x(30)
+
+    # Pied de page de garde
+    pdf.set_y(250)
+    pdf.set_font(pdf.main_font, "", 8)
+    pdf.set_text_color(148, 163, 184)
     date_str = datetime.now().strftime("%d/%m/%Y")
-    pdf.set_font("Helvetica", "", 12)
-    pdf.cell(0, 10, f"Date : {date_str}", 0, 1, "C")
-    
+    pdf.cell(0, 5, f"Date de remise : {date_str}  |  Document officiel pour instruction", align="C")
+
+    # ── Corps du document ───────────────────────────────────────────────
     pdf.add_page()
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Helvetica", "", 11)
-    
-    # Rendu du Markdown via HTML
-    html_content = markdown.markdown(memoire_text)
-    
-    # fpdf2 write_html
+    pdf.set_text_color(15, 23, 42)
+    pdf.set_font(pdf.main_font, "", 10)
+
+    # Nettoyage et formatage HTML pour write_html
+    cleaned_md = memoire_text
+    # Assurer que les listes à puces Markdown ont un saut de ligne propre
+    cleaned_md = re.sub(r"(\n-\s)", r"\n\n- ", cleaned_md)
+    html_content = markdown.markdown(cleaned_md, extensions=["tables"])
+
     try:
         pdf.write_html(html_content)
     except Exception as e:
-        pdf.multi_cell(0, 5, f"Erreur de conversion HTML vers PDF : {e}")
-        
+        pdf.multi_cell(0, 5, f"Note de conversion : {e}")
+
     buffer = io.BytesIO()
     pdf.output(buffer)
     buffer.seek(0)
