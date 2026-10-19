@@ -27,6 +27,10 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from fpdf import FPDF
 import markdown
 import base64
+import shutil
+import tempfile
+
+import video_tools as vt
 
 # ─────────────────────────────────────────────────────────────────────────
 # 0. PERSISTENCE – Compatible local ET Streamlit Cloud
@@ -238,6 +242,10 @@ def check_password():
         return True
 
 if not check_password():
+    _feat = vt.featured_video()
+    if _feat:
+        st.markdown("#### Découvrez MarketBuilding en vidéo")
+        st.video(str(_feat))
     st.stop()
 
 
@@ -367,7 +375,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        options=["Génération", "Profil", "Archives", "Paramètres"],
+        options=["Génération", "Profil", "Archives", "Vidéos", "Paramètres"],
         index=0,
         label_visibility="collapsed",
     )
@@ -1422,3 +1430,200 @@ elif page == "Génération":
         pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}#view=FitH" width="100%" height="800" type="application/pdf"></iframe>'
         st.markdown(pdf_display, unsafe_allow_html=True)
 
+
+# ─────────────────────────────────────────────────────────────────────────
+# PAGE : 📂 ARCHIVES
+# ─────────────────────────────────────────────────────────────────────────
+elif page == "Archives":
+    st.title("Archives des mémoires")
+    st.markdown("Tous les mémoires techniques générés, retéléchargeables à tout moment.")
+    st.divider()
+
+    os.makedirs("archives", exist_ok=True)
+    fichiers = [f for f in os.listdir("archives") if f.endswith((".pdf", ".docx"))]
+    if not fichiers:
+        st.info("Aucun mémoire technique généré pour le moment. Rendez-vous dans l'onglet « Génération ».")
+    else:
+        fichiers.sort(key=lambda x: os.path.getmtime(os.path.join("archives", x)), reverse=True)
+        for fichier in fichiers:
+            chemin = os.path.join("archives", fichier)
+            date_mod = datetime.fromtimestamp(os.path.getmtime(chemin)).strftime("%d/%m/%Y à %H:%M")
+            c1, c2, c3 = st.columns([3, 1, 1])
+            with c1:
+                st.markdown(f"**{'📄' if fichier.endswith('.pdf') else '📝'} {fichier}**")
+                st.caption(f"Généré le {date_mod} • {os.path.getsize(chemin) / 1024:.0f} Ko")
+            with c2:
+                with open(chemin, "rb") as f:
+                    st.download_button(
+                        "Télécharger", data=f.read(), file_name=fichier,
+                        mime="application/pdf" if fichier.endswith(".pdf")
+                        else "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True, key=f"dl_{fichier}",
+                    )
+            with c3:
+                if st.button("Supprimer", key=f"del_{fichier}", use_container_width=True):
+                    os.remove(chemin)
+                    st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# PAGE : 🎬 VIDÉOS
+# ─────────────────────────────────────────────────────────────────────────
+elif page == "Vidéos":
+    st.title("Vidéos de présentation")
+    st.markdown(
+        "Importez vos enregistrements (même très lourds, .mov Retina inclus), "
+        "ils sont automatiquement optimisés pour le web. Générez ensuite une vidéo de "
+        "présentation professionnelle du service en un clic."
+    )
+
+    DESKTOP_OUT = Path.home() / "Desktop" / "MarketBuilding Vidéos"
+    VIDEO_EXT = (".mov", ".mp4", ".m4v", ".webm", ".avi", ".mkv")
+
+    def _desktop_videos() -> list:
+        found = []
+        for folder in [Path.home() / "Desktop", Path.home() / "Downloads", Path.home() / "Movies"]:
+            if folder.exists():
+                found += [p for p in folder.iterdir() if p.suffix.lower() in VIDEO_EXT and p.is_file()]
+        return sorted(found, key=lambda p: p.stat().st_mtime, reverse=True)
+
+    def _progress_ui():
+        bar = st.progress(0.0, text="Préparation…")
+        return lambda frac, label: bar.progress(frac, text=f"{label} — {int(frac * 100)} %")
+
+    def _copy_to_desktop(p: Path) -> Path:
+        DESKTOP_OUT.mkdir(parents=True, exist_ok=True)
+        dst = DESKTOP_OUT / p.name
+        shutil.copy2(p, dst)
+        return dst
+
+    tab_gal, tab_imp, tab_gen = st.tabs(["Galerie", "Importer", "Générer une présentation"])
+
+    # ── GALERIE ───────────────────────────────────────────────────────
+    with tab_gal:
+        meta = vt.load_meta()
+        videos = vt.list_videos()
+        if not videos:
+            st.info("Aucune vidéo pour l'instant. Utilisez l'onglet « Importer ».")
+        for v in videos:
+            titre = meta.get("titles", {}).get(v.name, v.stem)
+            is_feat = meta.get("featured") == v.name
+            st.markdown(f"**{'⭐ ' if is_feat else ''}{titre}**")
+            st.video(str(v))
+            info = vt.media_info(v)
+            st.caption(f"{info['width']}×{info['height']} • {info['duration']:.0f} s • {v.stat().st_size / 1e6:.1f} Mo")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                with open(v, "rb") as f:
+                    st.download_button("Télécharger", f.read(), file_name=v.name, mime="video/mp4",
+                                       use_container_width=True, key=f"vdl_{v.name}")
+            with c2:
+                if st.button("Retirer de l'accueil" if is_feat else "Mettre sur l'accueil",
+                             key=f"feat_{v.name}", use_container_width=True):
+                    meta["featured"] = None if is_feat else v.name
+                    vt.save_meta(meta)
+                    st.rerun()
+            with c3:
+                if st.button("Copier sur le Bureau", key=f"desk_{v.name}", use_container_width=True):
+                    st.success(f"Copiée dans : {_copy_to_desktop(v)}")
+            with c4:
+                if st.button("Supprimer", key=f"vdel_{v.name}", use_container_width=True):
+                    vt.delete_video(v)
+                    st.rerun()
+            st.divider()
+
+    # ── IMPORTER ──────────────────────────────────────────────────────
+    with tab_imp:
+        st.subheader("Depuis votre Mac (Bureau, Téléchargements, Vidéos)")
+        st.caption("Recommandé pour les gros fichiers : aucun envoi, conversion directe.")
+        locaux = _desktop_videos()
+        if not locaux:
+            st.info("Aucune vidéo trouvée sur le Bureau, dans Téléchargements ou Vidéos.")
+        else:
+            labels = {f"{p.name}  ({p.stat().st_size / 1e6:.0f} Mo — {p.parent.name})": p for p in locaux}
+            choix = st.multiselect("Vidéos à importer", list(labels.keys()))
+            titre_imp = st.text_input("Titre (optionnel)", key="titre_local")
+            if st.button("Importer et optimiser", type="primary", disabled=not choix):
+                for i, lab in enumerate(choix, 1):
+                    st.write(f"**{labels[lab].name}**")
+                    t = f"{titre_imp} {i}".strip() if titre_imp and len(choix) > 1 else titre_imp
+                    try:
+                        out = vt.optimize_for_web(labels[lab], title=t, progress=_progress_ui())
+                        st.success(f"Prête : {out.name} ({out.stat().st_size / 1e6:.1f} Mo)")
+                    except Exception as e:
+                        st.error(str(e))
+
+        st.divider()
+        st.subheader("Envoyer un fichier")
+        uploads = st.file_uploader("Glissez vos vidéos ici (jusqu'à 2 Go)",
+                                   type=[e.strip(".") for e in VIDEO_EXT], accept_multiple_files=True)
+        if uploads and st.button("Optimiser les fichiers envoyés", type="primary"):
+            for up in uploads:
+                with tempfile.NamedTemporaryFile(suffix=Path(up.name).suffix, delete=False) as tmpf:
+                    shutil.copyfileobj(up, tmpf)
+                    tmp_path = Path(tmpf.name)
+                try:
+                    out = vt.optimize_for_web(tmp_path, title=Path(up.name).stem, progress=_progress_ui())
+                    st.success(f"Prête : {out.name} ({out.stat().st_size / 1e6:.1f} Mo)")
+                except Exception as e:
+                    st.error(str(e))
+                finally:
+                    tmp_path.unlink(missing_ok=True)
+
+    # ── GÉNÉRER ───────────────────────────────────────────────────────
+    with tab_gen:
+        sources = {f"[Galerie] {vt.load_meta().get('titles', {}).get(p.name, p.stem)}": p for p in vt.list_videos()
+                   if not p.name.startswith("Presentation_")}
+        sources.update({f"[Mac] {p.name}": p for p in _desktop_videos()})
+        if not sources:
+            st.info("Importez d'abord un enregistrement d'écran.")
+        else:
+            ent = config["entreprise"]
+            src_label = st.selectbox("Enregistrement à utiliser", list(sources.keys()))
+            src = sources[src_label]
+            dur = vt.media_info(src)["duration"] or 1.0
+
+            fmt = st.selectbox("Format", list(vt.FORMATS.keys()), index=0)
+            c1, c2 = st.columns(2)
+            with c1:
+                g_title = st.text_input("Titre d'introduction", "Vos mémoires techniques BTP en quelques minutes")
+                g_sub = st.text_input("Sous-titre", "Importez votre CCTP, récupérez un mémoire prêt à déposer")
+                g_caption = st.text_input("Bandeau pendant la démo (optionnel)",
+                                          "Analyse du CCTP  →  Rédaction  →  PDF & Word téléchargeables")
+            with c2:
+                g_outro = st.text_input("Titre de fin", "Gagnez plus d'appels d'offres")
+                contact_def = " • ".join(x for x in [ent.get("telephone", ""), ent.get("email", "")] if x) \
+                    or "marckethit67000@gmail.com"
+                g_contact = st.text_input("Contact affiché à la fin", contact_def)
+                g_speed = st.select_slider("Vitesse de la démo", options=[1.0, 1.25, 1.5, 2.0, 3.0], value=1.5,
+                                           format_func=lambda x: f"×{x:g}")
+
+            g_range = st.slider("Extrait de l'enregistrement (secondes)", 0.0, float(round(dur, 1)),
+                                (0.0, float(round(dur, 1))), step=0.5)
+            g_audio = st.file_uploader("Musique ou voix-off (optionnel)", type=["mp3", "m4a", "wav", "aac"])
+            final_d = 3.5 + (g_range[1] - g_range[0]) / g_speed + 4.0 - 1.2
+            st.caption(f"Durée finale estimée : {final_d:.0f} secondes")
+
+            if st.button("Générer la vidéo de présentation", type="primary", use_container_width=True):
+                audio_path = None
+                if g_audio:
+                    with tempfile.NamedTemporaryFile(suffix=Path(g_audio.name).suffix, delete=False) as af:
+                        af.write(g_audio.getvalue())
+                        audio_path = Path(af.name)
+                try:
+                    out = vt.generate_presentation(
+                        src, fmt, g_title, g_sub, g_caption, g_outro, g_contact,
+                        start=g_range[0], end=g_range[1], speed=g_speed,
+                        audio=audio_path, progress=_progress_ui(),
+                    )
+                    desk = _copy_to_desktop(out)
+                    st.success(f"Vidéo générée et enregistrée sur votre Bureau : {desk}")
+                    st.video(str(out))
+                    with open(out, "rb") as f:
+                        st.download_button("Télécharger la vidéo", f.read(), file_name=out.name,
+                                           mime="video/mp4", type="primary", use_container_width=True)
+                except Exception as e:
+                    st.error(f"Échec de la génération : {e}")
+                finally:
+                    if audio_path:
+                        audio_path.unlink(missing_ok=True)
