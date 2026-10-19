@@ -247,11 +247,30 @@ if not check_password():
         st.markdown(
             "<div style='text-align:center; margin-top:16px; margin-bottom:10px;'>"
             "<span style='color:#94A3B8; font-size:14px; letter-spacing:1px; text-transform:uppercase;'>"
-            "Aperçu de la plateforme MarketBuilding en action"
+            "Démonstration : Du CCTP au téléchargement du Mémoire Technique"
             "</span></div>",
             unsafe_allow_html=True,
         )
         st.video(str(_feat), autoplay=True, loop=True, muted=True)
+        st.markdown(
+            """
+            <div style='display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:14px;'>
+                <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #3B82F6; border-radius:10px; padding:12px;'>
+                    <div style='color:#3B82F6; font-weight:700; font-size:13px;'>ÉTAPE 1 · IMPORT DU CCTP</div>
+                    <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Déposez votre fichier <b>CCTP (PDF)</b> et cliquez sur <b>« Générer le Mémoire Technique »</b>.</div>
+                </div>
+                <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #F59E0B; border-radius:10px; padding:12px;'>
+                    <div style='color:#F59E0B; font-weight:700; font-size:13px;'>ÉTAPE 2 · TÉLÉCHARGEMENT DIRECT</div>
+                    <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Une fois rédigé, descendez en bas du document et cliquez sur <b>« 📥 Télécharger en PDF »</b> ou <b>« 📝 Télécharger en Word (.docx) »</b>.</div>
+                </div>
+                <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #10B981; border-radius:10px; padding:12px;'>
+                    <div style='color:#10B981; font-weight:700; font-size:13px;'>ÉTAPE 3 · APERÇU PDF & ARCHIVES</div>
+                    <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Prévisualisez les pages du PDF officiel directement à l'écran (icône <b>⬇️</b> en haut à droite) ou retrouvez-le dans l'onglet <b>Archives</b>.</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     st.stop()
 
 
@@ -1299,8 +1318,27 @@ elif page == "Génération":
 
     _feat_main = vt.featured_video()
     if _feat_main:
-        with st.expander("🎬 Découvrir la démonstration du service en vidéo", expanded=True):
+        with st.expander("🎬 Tutoriel vidéo : Comment générer et télécharger votre Mémoire Technique", expanded=True):
             st.video(str(_feat_main), autoplay=True, loop=True, muted=True)
+            st.markdown(
+                """
+                <div style='display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:10px;'>
+                    <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #3B82F6; border-radius:10px; padding:12px;'>
+                        <div style='color:#3B82F6; font-weight:700; font-size:13px;'>1. Importer le CCTP (Début de la vidéo)</div>
+                        <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Cliquez sur <b>Upload</b>, sélectionnez votre <b>CCTP (.pdf)</b> puis lancez <b>« 🚀 Générer le Mémoire Technique »</b>.</div>
+                    </div>
+                    <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #F59E0B; border-radius:10px; padding:12px;'>
+                        <div style='color:#F59E0B; font-weight:700; font-size:13px;'>2. Boutons de téléchargement PDF & Word</div>
+                        <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>En bas du mémoire généré, cliquez sur le bouton bleu <b>« 📥 Télécharger en PDF »</b> ou sur <b>« 📝 Télécharger en Word (.docx) »</b>.</div>
+                    </div>
+                    <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #10B981; border-radius:10px; padding:12px;'>
+                        <div style='color:#10B981; font-weight:700; font-size:13px;'>3. Visionneuse PDF & Onglet Archives</div>
+                        <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Consultez l'<b>Aperçu du document PDF</b> (bouton <b>⬇️</b> intégré au lecteur) ou retrouvez tous vos mémoires dans l'onglet <b>Archives</b>.</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     st.divider()
 
