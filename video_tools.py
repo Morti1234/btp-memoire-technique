@@ -120,7 +120,8 @@ def featured_video() -> Optional[Path]:
         p = VIDEOS_DIR / meta["featured"]
         if p.exists():
             return p
-    return None
+    vids = list_videos()
+    return vids[0] if vids else None
 
 
 def delete_video(path: Path) -> None:
