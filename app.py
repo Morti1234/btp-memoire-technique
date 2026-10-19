@@ -244,8 +244,14 @@ def check_password():
 if not check_password():
     _feat = vt.featured_video()
     if _feat:
-        st.markdown("#### Découvrez MarketBuilding en vidéo")
-        st.video(str(_feat))
+        st.markdown(
+            "<div style='text-align:center; margin-top:16px; margin-bottom:10px;'>"
+            "<span style='color:#94A3B8; font-size:14px; letter-spacing:1px; text-transform:uppercase;'>"
+            "Aperçu de la plateforme MarketBuilding en action"
+            "</span></div>",
+            unsafe_allow_html=True,
+        )
+        st.video(str(_feat), autoplay=True, loop=True, muted=True)
     st.stop()
 
 
@@ -1291,6 +1297,11 @@ elif page == "Génération":
     if not config["api_key"].strip():
         st.warning("⚠️ **Clé d'authentification système manquante.** Allez dans **Paramètres** pour la configurer.")
 
+    _feat_main = vt.featured_video()
+    if _feat_main:
+        with st.expander("🎬 Découvrir la démonstration du service en vidéo", expanded=True):
+            st.video(str(_feat_main), autoplay=True, loop=True, muted=True)
+
     st.divider()
 
     st.subheader("📄 CCTP de l'appel d'offres")
@@ -1483,8 +1494,10 @@ elif page == "Vidéos":
     def _desktop_videos() -> list:
         found = []
         for folder in [Path.home() / "Desktop", Path.home() / "Downloads", Path.home() / "Movies"]:
-            if folder.exists():
+            try:
                 found += [p for p in folder.iterdir() if p.suffix.lower() in VIDEO_EXT and p.is_file()]
+            except (PermissionError, FileNotFoundError, OSError):
+                continue  # dossier protégé par macOS : on l'ignore
         return sorted(found, key=lambda p: p.stat().st_mtime, reverse=True)
 
     def _progress_ui():
@@ -1525,7 +1538,10 @@ elif page == "Vidéos":
                     st.rerun()
             with c3:
                 if st.button("Copier sur le Bureau", key=f"desk_{v.name}", use_container_width=True):
-                    st.success(f"Copiée dans : {_copy_to_desktop(v)}")
+                    try:
+                        st.success(f"Copiée dans : {_copy_to_desktop(v)}")
+                    except OSError:
+                        st.warning("macOS refuse l'accès au Bureau : utilisez « Télécharger ».")
             with c4:
                 if st.button("Supprimer", key=f"vdel_{v.name}", use_container_width=True):
                     vt.delete_video(v)
@@ -1616,8 +1632,10 @@ elif page == "Vidéos":
                         start=g_range[0], end=g_range[1], speed=g_speed,
                         audio=audio_path, progress=_progress_ui(),
                     )
-                    desk = _copy_to_desktop(out)
-                    st.success(f"Vidéo générée et enregistrée sur votre Bureau : {desk}")
+                    try:
+                        st.success(f"Vidéo générée et enregistrée sur votre Bureau : {_copy_to_desktop(out)}")
+                    except OSError:
+                        st.success("Vidéo générée (disponible dans la Galerie et via « Télécharger »).")
                     st.video(str(out))
                     with open(out, "rb") as f:
                         st.download_button("Télécharger la vidéo", f.read(), file_name=out.name,
