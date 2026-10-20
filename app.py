@@ -29,6 +29,7 @@ import markdown
 import base64
 import shutil
 import tempfile
+import zipfile
 
 import video_tools as vt
 
@@ -1342,18 +1343,28 @@ elif page == "Génération":
 
     st.divider()
 
-    st.subheader("📄 CCTP de l'appel d'offres")
-    cctp_file = st.file_uploader(
-        "Uploadez le CCTP (PDF)",
+    st.subheader("📄 CCTP de l'appel d'offres (Simple ou Multi-CCTP)")
+    cctp_files = st.file_uploader(
+        "Uploadez un ou plusieurs CCTP (PDF) pour générer plusieurs mémoires en une seule fois",
         type=["pdf"],
         key="cctp",
-        help="Le cahier des charges techniques de l'appel d'offres au format PDF.",
+        accept_multiple_files=True,
+        help="Glissez-déposez un seul CCTP ou plusieurs CCTP simultanément pour les traiter en lot.",
     )
+
+    nb_files = len(cctp_files) if cctp_files else 0
+    if nb_files > 1:
+        st.info(f"📚 **{nb_files} CCTP sélectionnés** : cliquez sur le bouton ci-dessous pour générer les {nb_files} mémoires techniques à la suite automatiquement.")
 
     st.divider()
 
+    btn_label = (
+        f"🚀 Générer les {nb_files} Mémoires Techniques"
+        if nb_files > 1
+        else "🚀 Générer le Mémoire Technique"
+    )
     generate_btn = st.button(
-        "🚀 Générer le Mémoire Technique",
+        btn_label,
         type="primary",
         use_container_width=True,
     )
@@ -1366,118 +1377,217 @@ elif page == "Génération":
             st.error("❌ Clé d'authentification système manquante. Allez dans **Paramètres** pour la configurer.")
             st.stop()
 
-        if not cctp_file:
-            st.error("❌ Veuillez uploader le fichier CCTP (PDF).")
+        if not cctp_files:
+            st.error("❌ Veuillez uploader au moins un fichier CCTP (PDF).")
             st.stop()
 
-        # ── Extraction du PDF ───────────────────────────────────────────
-        with st.status("📖 Extraction du texte du CCTP…", expanded=True) as status:
-            try:
-                st.write("Lecture du CCTP…")
-                cctp_text = extract_text_from_pdf(cctp_file)
-                nb_pages_cctp = cctp_text.count("--- Page ")
-                nb_chars_cctp = len(cctp_text)
-                st.write(f"✅ CCTP : {nb_pages_cctp} pages extraites ({nb_chars_cctp:,} caractères)")
-                status.update(label="✅ Extraction terminée", state="complete")
-            except ValueError as e:
-                status.update(label="❌ Erreur d'extraction", state="error")
-                st.error(str(e))
-                st.stop()
-
         profil_text = build_profil_text(config["entreprise"])
-
         if profil_text:
             st.info(f"🏢 Profil **{config['entreprise'].get('nom', '')}** utilisé automatiquement.")
         else:
-            st.info("⚙️ **Mode autonome** : le système générera un mémoire complet en se basant uniquement sur le CCTP.")
+            st.info("⚙️ **Mode autonome** : le système générera un mémoire complet en se basant uniquement sur chaque CCTP.")
 
-        # ── Tâche A : Analyse du CCTP ──────────────────────────────────
-        with st.status("Analyse sémantique du CCTP en cours…", expanded=True) as status:
-            try:
-                nb_chunks = len(chunk_text(cctp_text))
-                if nb_chunks > 1:
-                    st.write(f"Document volumineux → découpage en {nb_chunks} parties pour l'analyse.")
-
-                st.write("Extraction algorithmique des exigences techniques des exigences…")
-                analyse = analyse_cctp(api_key, llm_provider, cctp_text)
-                st.write("✅ Analyse terminée.")
-                status.update(label="✅ Analyse du CCTP terminée", state="complete")
-            except ValueError as e:
-                status.update(label="❌ Erreur d'analyse", state="error")
-                st.error(str(e))
-                st.stop()
-
-        with st.expander("📊 Voir l'analyse extraite du CCTP", expanded=False):
-            st.json(analyse)
-
-        # ── Tâche B : Rédaction du Mémoire ──────────────────────────────
-        with st.status("✍️ Rédaction du Mémoire Technique…", expanded=True) as status:
-            try:
-                st.write("Compilation et formatage du document final personnalisé…")
-                memoire_md = rediger_memoire(api_key, llm_provider, analyse, profil_text)
-                st.write("✅ Rédaction terminée.")
-                status.update(label="✅ Mémoire Technique rédigé", state="complete")
-            except ValueError as e:
-                status.update(label="❌ Erreur de rédaction", state="error")
-                st.error(str(e))
-                st.stop()
-
-        with st.expander("📝 Aperçu du Mémoire Technique (Markdown)", expanded=True):
-            st.markdown(memoire_md)
-
-        # ── Génération des fichiers Word et PDF ────────────────────────
-        with st.status("📄 Compilation et formatage du document final…", expanded=True) as status:
-            try:
-                docx_buffer = generate_docx(memoire_md, analyse, config["entreprise"])
-                pdf_buffer = generate_pdf(memoire_md, analyse, config["entreprise"])
-                status.update(label="✅ Document généré avec succès", state="complete")
-            except Exception as e:
-                status.update(label="❌ Erreur de formatage", state="error")
-                st.error(f"Erreur lors de la génération du document : {e}")
-                st.stop()
-
-        # ── Boutons de téléchargement ────────────────────────────────────
-        st.divider()
-        st.success("🎉 Document généré avec succès.")
-
-        nom_fichier = re.sub(r"[^\w\s-]", "", analyse.get("nom_projet", "Memoire_Technique"))
-        nom_fichier = nom_fichier.strip().replace(" ", "_")[:60]
-
-        # Sauvegarde automatique dans les archives
+        batch_results = []
         os.makedirs("archives", exist_ok=True)
-        date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-        with open(f"archives/Memoire_{nom_fichier}_{date_str}.pdf", "wb") as f:
-            f.write(pdf_buffer.getvalue())
-        with open(f"archives/Memoire_{nom_fichier}_{date_str}.docx", "wb") as f:
-            f.write(docx_buffer.getvalue())
+        batch_progress = st.progress(0.0, text=f"Démarrage du traitement (0/{nb_files})…") if nb_files > 1 else None
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.download_button(
-                label="📥 Télécharger en PDF",
-                data=pdf_buffer,
-                file_name=f"Memoire_Technique_{nom_fichier}.pdf",
-                mime="application/pdf",
-                type="primary",
-                use_container_width=True,
-            )
-        with col2:
-            st.download_button(
-                label="📝 Télécharger en Word (.docx)",
-                data=docx_buffer,
-                file_name=f"Memoire_Technique_{nom_fichier}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True,
-            )
+        for idx, cctp_file in enumerate(cctp_files, start=1):
+            prefix = f"[{idx}/{nb_files}] {cctp_file.name} — " if nb_files > 1 else ""
+            if batch_progress:
+                batch_progress.progress((idx - 1) / nb_files, text=f"Traitement du dossier {idx}/{nb_files} : {cctp_file.name}…")
 
-        st.caption("💡 Le format Word vous permet d'ajouter le logo de l'entreprise ou des photos de chantier avant envoi.")
+            # ── Extraction du PDF ───────────────────────────────────────────
+            with st.status(f"📖 {prefix}Extraction du texte du CCTP…", expanded=(nb_files == 1)) as status:
+                try:
+                    st.write(f"Lecture de **{cctp_file.name}**…")
+                    cctp_text = extract_text_from_pdf(cctp_file)
+                    nb_pages_cctp = cctp_text.count("--- Page ")
+                    nb_chars_cctp = len(cctp_text)
+                    st.write(f"✅ CCTP : {nb_pages_cctp} pages extraites ({nb_chars_cctp:,} caractères)")
+                    status.update(label=f"✅ {prefix}Extraction terminée", state="complete")
+                except ValueError as e:
+                    status.update(label=f"❌ {prefix}Erreur d'extraction", state="error")
+                    st.error(f"{cctp_file.name} : {e}")
+                    continue
 
-        # ── Prévisualisation PDF intégrée ────────────────────────
-        st.subheader("👁️ Aperçu du document PDF")
-        pdf_buffer.seek(0)
-        b64_pdf = base64.b64encode(pdf_buffer.read()).decode('utf-8')
-        pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}#view=FitH" width="100%" height="800" type="application/pdf"></iframe>'
-        st.markdown(pdf_display, unsafe_allow_html=True)
+            # ── Tâche A : Analyse du CCTP ──────────────────────────────────
+            with st.status(f"🔍 {prefix}Analyse sémantique du CCTP en cours…", expanded=(nb_files == 1)) as status:
+                try:
+                    nb_chunks = len(chunk_text(cctp_text))
+                    if nb_chunks > 1:
+                        st.write(f"Document volumineux → découpage en {nb_chunks} parties pour l'analyse.")
+                    st.write("Extraction algorithmique des exigences techniques…")
+                    analyse = analyse_cctp(api_key, llm_provider, cctp_text)
+                    st.write("✅ Analyse terminée.")
+                    status.update(label=f"✅ {prefix}Analyse du CCTP terminée", state="complete")
+                except ValueError as e:
+                    status.update(label=f"❌ {prefix}Erreur d'analyse", state="error")
+                    st.error(f"{cctp_file.name} : {e}")
+                    continue
+
+            # ── Tâche B : Rédaction du Mémoire ──────────────────────────────
+            with st.status(f"✍️ {prefix}Rédaction du Mémoire Technique…", expanded=(nb_files == 1)) as status:
+                try:
+                    st.write("Compilation et formatage du document final personnalisé…")
+                    memoire_md = rediger_memoire(api_key, llm_provider, analyse, profil_text)
+                    st.write("✅ Rédaction terminée.")
+                    status.update(label=f"✅ {prefix}Mémoire Technique rédigé", state="complete")
+                except ValueError as e:
+                    status.update(label=f"❌ {prefix}Erreur de rédaction", state="error")
+                    st.error(f"{cctp_file.name} : {e}")
+                    continue
+
+            # ── Génération des fichiers Word et PDF ────────────────────────
+            with st.status(f"📄 {prefix}Compilation PDF & Word…", expanded=(nb_files == 1)) as status:
+                try:
+                    docx_buffer = generate_docx(memoire_md, analyse, config["entreprise"])
+                    pdf_buffer = generate_pdf(memoire_md, analyse, config["entreprise"])
+                    status.update(label=f"✅ {prefix}Document généré avec succès", state="complete")
+                except Exception as e:
+                    status.update(label=f"❌ {prefix}Erreur de formatage", state="error")
+                    st.error(f"Erreur lors de la génération du document ({cctp_file.name}) : {e}")
+                    continue
+
+            nom_projet = analyse.get("nom_projet", "") or Path(cctp_file.name).stem
+            nom_fichier = re.sub(r"[^\w\s-]", "", nom_projet).strip().replace(" ", "_")[:60] or f"Memoire_{idx}"
+
+            date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            pdf_bytes = pdf_buffer.getvalue()
+            docx_bytes = docx_buffer.getvalue()
+
+            with open(f"archives/Memoire_{nom_fichier}_{date_str}.pdf", "wb") as f:
+                f.write(pdf_bytes)
+            with open(f"archives/Memoire_{nom_fichier}_{date_str}.docx", "wb") as f:
+                f.write(docx_bytes)
+
+            batch_results.append({
+                "source_name": cctp_file.name,
+                "nom_projet": nom_projet,
+                "nom_fichier": nom_fichier,
+                "analyse": analyse,
+                "memoire_md": memoire_md,
+                "pdf_bytes": pdf_bytes,
+                "docx_bytes": docx_bytes,
+            })
+
+        if batch_progress:
+            batch_progress.progress(1.0, text=f"✅ {len(batch_results)}/{nb_files} Mémoire(s) Technique(s) généré(s) avec succès !")
+
+        if batch_results:
+            st.session_state["generated_results"] = batch_results
+
+    # ── Affichage des résultats générés (persistant au clic de téléchargement) ──
+    results = st.session_state.get("generated_results", [])
+    if results:
+        st.divider()
+        if len(results) == 1:
+            res = results[0]
+            st.success("🎉 Document généré avec succès.")
+
+            with st.expander("📊 Voir l'analyse extraite du CCTP", expanded=False):
+                st.json(res["analyse"])
+
+            with st.expander("📝 Aperçu du Mémoire Technique (Markdown)", expanded=True):
+                st.markdown(res["memoire_md"])
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    label="📥 Télécharger en PDF",
+                    data=res["pdf_bytes"],
+                    file_name=f"Memoire_Technique_{res['nom_fichier']}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                    key="dl_single_pdf",
+                )
+            with col2:
+                st.download_button(
+                    label="📝 Télécharger en Word (.docx)",
+                    data=res["docx_bytes"],
+                    file_name=f"Memoire_Technique_{res['nom_fichier']}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="dl_single_docx",
+                )
+
+            st.caption("💡 Le format Word vous permet d'ajouter le logo de l'entreprise ou des photos de chantier avant envoi.")
+
+            st.subheader("👁️ Aperçu du document PDF")
+            b64_pdf = base64.b64encode(res["pdf_bytes"]).decode("utf-8")
+            pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}#view=FitH" width="100%" height="800" type="application/pdf"></iframe>'
+            st.markdown(pdf_display, unsafe_allow_html=True)
+
+        else:
+            st.success(f"🎉 **{len(results)} Mémoires Techniques générés avec succès !** Téléchargez-les tous en un clic ou individuellement ci-dessous.")
+
+            # Création des archives ZIP (Tous les PDF + Pack Complet PDF & Word)
+            zip_pdf_buf = io.BytesIO()
+            zip_all_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_pdf_buf, "w", zipfile.ZIP_DEFLATED) as zpdf, \
+                 zipfile.ZipFile(zip_all_buf, "w", zipfile.ZIP_DEFLATED) as zall:
+                for i, r in enumerate(results, start=1):
+                    pdf_name = f"{i:02d}_Memoire_Technique_{r['nom_fichier']}.pdf"
+                    docx_name = f"{i:02d}_Memoire_Technique_{r['nom_fichier']}.docx"
+                    zpdf.writestr(pdf_name, r["pdf_bytes"])
+                    zall.writestr(pdf_name, r["pdf_bytes"])
+                    zall.writestr(docx_name, r["docx_bytes"])
+
+            zcol1, zcol2 = st.columns(2)
+            with zcol1:
+                st.download_button(
+                    label=f"📦 Télécharger les {len(results)} PDF d'un coup (.ZIP)",
+                    data=zip_pdf_buf.getvalue(),
+                    file_name=f"Lot_{len(results)}_Memoires_Techniques_PDF_{datetime.now().strftime('%Y%m%d')}.zip",
+                    mime="application/zip",
+                    type="primary",
+                    use_container_width=True,
+                    key="dl_batch_zip_pdf",
+                )
+            with zcol2:
+                st.download_button(
+                    label=f"📦 Télécharger le pack complet PDF + Word (.ZIP)",
+                    data=zip_all_buf.getvalue(),
+                    file_name=f"Lot_{len(results)}_Memoires_Techniques_Complet_{datetime.now().strftime('%Y%m%d')}.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    key="dl_batch_zip_all",
+                )
+
+            st.markdown("### 📋 Détail par appel d'offres")
+            tab_labels = [f"📄 {i}. {r['nom_projet'][:32]}" for i, r in enumerate(results, start=1)]
+            tabs = st.tabs(tab_labels)
+            for i, (tab, res) in enumerate(zip(tabs, results), start=1):
+                with tab:
+                    st.markdown(f"**Projet :** {res['nom_projet']}  \n**Fichier CCTP source :** `{res['source_name']}`")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.download_button(
+                            label="📥 Télécharger en PDF",
+                            data=res["pdf_bytes"],
+                            file_name=f"Memoire_Technique_{res['nom_fichier']}.pdf",
+                            mime="application/pdf",
+                            type="primary",
+                            use_container_width=True,
+                            key=f"dl_batch_pdf_{i}",
+                        )
+                    with c2:
+                        st.download_button(
+                            label="📝 Télécharger en Word (.docx)",
+                            data=res["docx_bytes"],
+                            file_name=f"Memoire_Technique_{res['nom_fichier']}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            use_container_width=True,
+                            key=f"dl_batch_docx_{i}",
+                        )
+                    with st.expander("📝 Voir le texte rédigé (Markdown)", expanded=False):
+                        st.markdown(res["memoire_md"])
+                    with st.expander("👁️ Aperçu du document PDF", expanded=True):
+                        b64_pdf = base64.b64encode(res["pdf_bytes"]).decode("utf-8")
+                        st.markdown(
+                            f'<iframe src="data:application/pdf;base64,{b64_pdf}#view=FitH" width="100%" height="700" type="application/pdf"></iframe>',
+                            unsafe_allow_html=True,
+                        )
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -1494,6 +1604,23 @@ elif page == "Archives":
         st.info("Aucun mémoire technique généré pour le moment. Rendez-vous dans l'onglet « Génération ».")
     else:
         fichiers.sort(key=lambda x: os.path.getmtime(os.path.join("archives", x)), reverse=True)
+
+        # Bouton de téléchargement groupé en ZIP
+        zip_arch_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_arch_buf, "w", zipfile.ZIP_DEFLATED) as zarch:
+            for fichier in fichiers:
+                zarch.write(os.path.join("archives", fichier), arcname=fichier)
+        st.download_button(
+            label=f"📦 Tout télécharger en un clic ({len(fichiers)} fichiers .ZIP)",
+            data=zip_arch_buf.getvalue(),
+            file_name=f"Archives_Memoires_Techniques_{datetime.now().strftime('%Y%m%d')}.zip",
+            mime="application/zip",
+            type="primary",
+            use_container_width=True,
+            key="dl_all_archives_zip",
+        )
+        st.divider()
+
         for fichier in fichiers:
             chemin = os.path.join("archives", fichier)
             date_mod = datetime.fromtimestamp(os.path.getmtime(chemin)).strftime("%d/%m/%Y à %H:%M")
