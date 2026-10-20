@@ -96,7 +96,7 @@ def load_config() -> dict:
     config = {
         "api_key": "",
         "llm_provider": "OpenAI (GPT-4o)",
-        "dark_mode": True,
+        "dark_mode": False,
         "entreprise": dict(DEFAULT_ENTREPRISE),
     }
 
@@ -201,11 +201,11 @@ st.set_page_config(
 
 config = load_config()
 if "dark_mode" not in st.session_state:
-    st.session_state["dark_mode"] = bool(config.get("dark_mode", True))
+    st.session_state["dark_mode"] = bool(config.get("dark_mode", False))
 
 
-def get_marketbuilding_logo_svg(dark_mode: bool = True) -> str:
-    """Retourne le logo SVG MarketBuilding adapté au thème actif (Sombre ou Clair)."""
+def get_marketbuilding_logo_svg(dark_mode: bool = False) -> str:
+    """Retourne le logo SVG MarketBuilding adapté au fond (Clair par défaut pour la navigation)."""
     win_fill = "#0e1117" if dark_mode else "#ffffff"
     title_fill = "#ffffff" if dark_mode else "#0F172A"
     sub_fill = "#94A3B8" if dark_mode else "#475569"
@@ -267,12 +267,16 @@ def get_marketbuilding_logo_svg(dark_mode: bool = True) -> str:
     '''
 
 
-def inject_custom_css(dark_mode: bool = True):
-    """Injecte une feuille de style complète et structurée avec support Mode Sombre / Mode Clair."""
+def inject_custom_css(dark_mode: bool = False):
+    """
+    Injecte la feuille de style globale :
+    - Toute la Navigation Principale (barre latérale & onglets de navigation) est TOUJOURS en Mode Clair
+      pour une lisibilité et une présentation client irréprochables.
+    - L'espace de travail central bascule entre Mode Clair (OFF) et Mode Sombre (ON) selon le switch.
+    """
     if dark_mode:
         vars_css = """
             --bg-app: #0B0F17;
-            --bg-sidebar: #111827;
             --bg-card: #151C28;
             --bg-card-alt: #1B2434;
             --bg-hero: linear-gradient(135deg, #111827 0%, #1E293B 100%);
@@ -290,10 +294,9 @@ def inject_custom_css(dark_mode: bool = True):
         """
     else:
         vars_css = """
-            --bg-app: #F1F5F9;
-            --bg-sidebar: #FFFFFF;
+            --bg-app: #F8FAFC;
             --bg-card: #FFFFFF;
-            --bg-card-alt: #F8FAFC;
+            --bg-card-alt: #F1F5F9;
             --bg-hero: linear-gradient(135deg, #FFFFFF 0%, #EFF6FF 100%);
             --border-color: #E2E8F0;
             --border-hover: #2563EB;
@@ -303,7 +306,7 @@ def inject_custom_css(dark_mode: bool = True):
             --tag-bg: #EFF6FF;
             --tag-text: #1D4ED8;
             --tag-border: #BFDBFE;
-            --shadow-card: 0 6px 20px rgba(15, 23, 42, 0.06);
+            --shadow-card: 0 6px 20px rgba(15, 23, 42, 0.05);
             --input-bg: #FFFFFF;
             --uploader-bg: #F8FAFC;
         """
@@ -333,16 +336,56 @@ def inject_custom_css(dark_mode: bool = True):
                 max-width: 1180px !important;
             }}
 
-            /* Barre latérale */
+            /* ── NAVIGATION PRINCIPALE TOUJOURS EN MODE CLAIR ── */
             section[data-testid="stSidebar"] {{
-                background-color: var(--bg-sidebar) !important;
-                border-right: 1px solid var(--border-color) !important;
+                background-color: #FFFFFF !important;
+                border-right: 1px solid #E2E8F0 !important;
+                box-shadow: 4px 0 20px rgba(15, 23, 42, 0.04) !important;
             }}
             section[data-testid="stSidebar"] * {{
-                color: var(--text-primary);
+                color: #0F172A !important;
+            }}
+            section[data-testid="stSidebar"] .stCaption,
+            section[data-testid="stSidebar"] small {{
+                color: #64748B !important;
+            }}
+            section[data-testid="stSidebar"] hr {{
+                border-color: #E2E8F0 !important;
+            }}
+            /* Boutons radio de la Navigation Principale en Mode Clair structuré */
+            section[data-testid="stSidebar"] div[role="radiogroup"] label {{
+                background-color: #F8FAFC !important;
+                border: 1px solid #E2E8F0 !important;
+                border-radius: 10px !important;
+                padding: 10px 14px !important;
+                margin-bottom: 6px !important;
+                transition: all 0.15s ease !important;
+                font-weight: 600 !important;
+            }}
+            section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {{
+                background-color: #EFF6FF !important;
+                border-color: #93C5FD !important;
+            }}
+            section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"],
+            section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {{
+                background-color: #EFF6FF !important;
+                border: 1.5px solid #2563EB !important;
+                border-left: 4px solid #2563EB !important;
+                color: #1D4ED8 !important;
+                box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12) !important;
+            }}
+            section[data-testid="stSidebar"] div[data-testid="stExpander"] {{
+                background-color: #F8FAFC !important;
+                border: 1px solid #E2E8F0 !important;
+                box-shadow: none !important;
+            }}
+            section[data-testid="stSidebar"] div[data-baseweb="input"] > div {{
+                background-color: #FFFFFF !important;
+                border-color: #CBD5E1 !important;
+                color: #0F172A !important;
             }}
 
-            /* Titres et textes */
+            /* Titres et textes de la zone principale */
             h1, h2, h3, h4, h5, h6,
             [data-testid="stMarkdownContainer"] h1,
             [data-testid="stMarkdownContainer"] h2,
@@ -429,14 +472,22 @@ def inject_custom_css(dark_mode: bool = True):
                 font-weight: 600 !important;
             }}
 
-            /* Onglets (Tabs) */
+            /* Onglets (Tabs) de navigation principale toujours en mode clair */
+            div[data-baseweb="tab-list"] {{
+                background-color: #FFFFFF !important;
+                border: 1px solid #E2E8F0 !important;
+                border-radius: 12px !important;
+                padding: 4px 8px !important;
+                margin-bottom: 14px !important;
+            }}
             button[data-baseweb="tab"] {{
-                color: var(--text-muted) !important;
+                color: #475569 !important;
                 font-weight: 600 !important;
                 font-size: 14px !important;
             }}
             button[data-baseweb="tab"][aria-selected="true"] {{
-                color: #3B82F6 !important;
+                color: #1D4ED8 !important;
+                font-weight: 700 !important;
             }}
 
             /* Composants personnalisés MarketBuilding */
@@ -623,12 +674,12 @@ inject_custom_css(st.session_state["dark_mode"])
 
 def render_theme_toggle(location_key: str):
     """Affiche un bouton ON/OFF clair pour activer ou désactiver le Mode Sombre."""
-    current_dark = st.session_state.get("dark_mode", True)
+    current_dark = st.session_state.get("dark_mode", False)
     new_dark = st.toggle(
         "🌙 Mode Sombre (ON / OFF)",
         value=current_dark,
         key=f"theme_toggle_{location_key}",
-        help="Basculez entre le thème Sombre (Dark) et le thème Clair (Light) pour vos présentations clients.",
+        help="Basculez l'espace de travail entre le Mode Clair (OFF) et le Mode Sombre (ON).",
     )
     if new_dark != current_dark:
         st.session_state["dark_mode"] = new_dark
@@ -666,10 +717,10 @@ def check_password():
         <div class="password-card">
             <div class="mb-hero-badge">PORTAIL CLIENT SÉCURISÉ</div>
             <div style="font-size:20px; font-weight:800; color:var(--text-primary); margin-bottom:6px;">
-                Plateforme IA · Mémoires Techniques BTP
+                MarketBuilding Pro · Mémoires Techniques BTP
             </div>
             <div style="font-size:13px; color:var(--text-secondary); margin-bottom:4px;">
-                Croisement automatique RC × CCTP × DPGF × PGC × Entreprise
+                Croisement documentaire RC × CCTP × DPGF × PGC × Entreprise
             </div>
         </div>
         """,
@@ -724,54 +775,61 @@ if not check_password():
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 2. BARRE LATÉRALE – Navigation structurée & Mode Sombre ON/OFF
+# 2. BARRE LATÉRALE – Navigation Principale (Mode Clair) & Accès Propriétaire
 # ─────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown(get_marketbuilding_logo_svg(st.session_state["dark_mode"]), unsafe_allow_html=True)
+    # Le logo dans la barre latérale est toujours rendu en Mode Clair (dark_mode=False)
+    st.markdown(get_marketbuilding_logo_svg(False), unsafe_allow_html=True)
 
-    # Interrupteur Mode Sombre ON/OFF bien visible pour le client
+    # Interrupteur Mode Sombre ON/OFF pour l'espace de travail
     render_theme_toggle("sidebar")
-    st.caption(f"Thème actif : **{'🌙 Mode Sombre (ON)' if st.session_state['dark_mode'] else '☀️ Mode Clair (OFF)'}**")
+    st.caption(f"Affichage : **{'🌙 Mode Sombre (ON)' if st.session_state['dark_mode'] else '☀️ Mode Clair (OFF)'}**")
 
     st.divider()
-    st.markdown("<div style='font-size:11.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px;'>Navigation Principale</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:11.5px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px;'>Navigation Principale</div>",
+        unsafe_allow_html=True,
+    )
 
-    NAV_LABELS = {
+    # Navigation visible par les clients (aucune mention d'IA ni de Paramètres IA)
+    CLIENT_NAV_LABELS = {
         "Génération": "📄  Générer un Mémoire",
         "Profil": "🏢  Profil Entreprise",
         "Archives": "📂  Archives & Livrables",
-        "Vidéos": "🎬  Studio Vidéos",
-        "Paramètres": "⚙️  Paramètres IA",
+        "CGU": "⚖️  Conditions Générales (CGU)",
     }
+
+    # Accès Propriétaire réservé à l'administrateur (?admin=1 ou déverrouillage propriétaire)
+    is_owner = str(st.query_params.get("admin", "")).strip() == "1" or st.session_state.get("owner_unlocked", False)
+    if is_owner:
+        CLIENT_NAV_LABELS["Vidéos"] = "🎬  Studio Vidéos (Admin)"
+        CLIENT_NAV_LABELS["Paramètres"] = "⚙️  Paramètres Système (Admin)"
+
     page = st.radio(
         "Navigation",
-        options=list(NAV_LABELS.keys()),
-        format_func=lambda k: NAV_LABELS[k],
+        options=list(CLIENT_NAV_LABELS.keys()),
+        format_func=lambda k: CLIENT_NAV_LABELS[k],
         index=0,
         label_visibility="collapsed",
     )
 
     st.divider()
 
-    # Indicateurs de statut rapide présentés dans une carte propre
+    # Carte d'état client (sans aucune mention de Moteur IA)
     entreprise_ok = bool(config["entreprise"].get("nom", "").strip())
-    api_ok = bool(config["api_key"].strip())
     os.makedirs("archives", exist_ok=True)
     nb_archives = len([f for f in os.listdir("archives") if f.endswith((".pdf", ".docx"))])
 
     st.markdown(
         f"""
-        <div style="background:var(--bg-card-alt); border:1px solid var(--border-color); border-radius:12px; padding:12px 14px;">
-            <div style="font-size:11.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px;">
-                État de la plateforme
+        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px 14px;">
+            <div style="font-size:11.5px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px;">
+                Dossier Entreprise
             </div>
-            <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:5px;">
-                {'🟢' if api_ok else '🔴'} <b>Moteur IA :</b> {config['llm_provider'].split(' ')[0] if api_ok else 'Non configuré'}
+            <div style="font-size:12.5px; color:#334155; margin-bottom:6px;">
+                {'🟢' if entreprise_ok else '🔵'} <b>Société :</b> {config['entreprise'].get('nom') or 'Via pièces déposées'}
             </div>
-            <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:5px;">
-                {'🟢' if entreprise_ok else '🔵'} <b>Entreprise :</b> {config['entreprise'].get('nom') or 'Via docs uploadés'}
-            </div>
-            <div style="font-size:12.5px; color:var(--text-secondary);">
+            <div style="font-size:12.5px; color:#334155;">
                 📂 <b>Livrables archivés :</b> {nb_archives} fichier(s)
             </div>
         </div>
@@ -781,6 +839,23 @@ with st.sidebar:
 
     st.divider()
     st.caption("MarketBuilding Pro v3.5 · Édition Client BTP")
+
+    # Zone discrète réservée uniquement au propriétaire en bas de barre latérale
+    with st.expander("🔒 Accès Propriétaire", expanded=False):
+        if not is_owner:
+            owner_code = st.text_input("Code propriétaire", type="password", key="owner_pin_input", placeholder="Code admin...")
+            if owner_code:
+                expected_pin = st.secrets.get("app_password", "admin") if "app_password" in st.secrets else "admin"
+                if owner_code == expected_pin:
+                    st.session_state["owner_unlocked"] = True
+                    st.rerun()
+                else:
+                    st.error("Code incorrect")
+        else:
+            st.success("Mode Propriétaire actif")
+            if st.button("Verrouiller l'accès propriétaire", use_container_width=True):
+                st.session_state["owner_unlocked"] = False
+                st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -1117,7 +1192,7 @@ RÈGLES IMPÉRATIVES DE RÉDACTION ET DE CROISEMENT DES DOCUMENTS :
 
 
 def _call_openai(api_key: str, system_prompt: str, user_content: str, model: str = "gpt-4o") -> str:
-    """Appelle l'API OpenAI Chat Completions."""
+    """Appelle le service de génération (OpenAI)."""
     from openai import OpenAI, APIError, AuthenticationError
 
     client = OpenAI(api_key=api_key)
@@ -1134,16 +1209,14 @@ def _call_openai(api_key: str, system_prompt: str, user_content: str, model: str
         return response.choices[0].message.content.strip()
     except AuthenticationError:
         raise ValueError(
-            "❌ Clé d'authentification système OpenAI invalide. Allez dans Paramètres pour la corriger."
+            "❌ Clé d'authentification système invalide. Veuillez contacter l'administrateur."
         )
     except APIError as e:
-        raise ValueError(f"❌ Erreur API OpenAI : {e.message}")
-
-
+        raise ValueError(f"❌ Erreur du service de traitement : {e.message}")
 
 
 def _call_deepseek(api_key: str, system_prompt: str, user_content: str) -> str:
-    """Appelle l'API DeepSeek via la librairie openai."""
+    """Appelle le service de génération (DeepSeek)."""
     from openai import OpenAI, AuthenticationError
 
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
@@ -1159,12 +1232,13 @@ def _call_deepseek(api_key: str, system_prompt: str, user_content: str) -> str:
         )
         return response.choices[0].message.content.strip()
     except AuthenticationError:
-        raise ValueError("❌ Clé d'authentification système DeepSeek invalide. Vérifiez vos réglages (ou vos secrets).")
+        raise ValueError("❌ Clé d'authentification système invalide. Veuillez contacter l'administrateur.")
     except Exception as e:
-        raise ValueError(f"❌ Erreur DeepSeek : {e}")
+        raise ValueError(f"❌ Erreur du service de traitement : {e}")
+
 
 def _call_gemini(api_key: str, system_prompt: str, user_content: str, model: str = "gemini-2.0-flash") -> str:
-    """Appelle l'API Google Gemini."""
+    """Appelle le service de génération (Gemini)."""
     from google import genai
     from google.genai import types
 
@@ -1184,13 +1258,13 @@ def _call_gemini(api_key: str, system_prompt: str, user_content: str, model: str
         error_msg = str(e).lower()
         if "api key" in error_msg or "unauthorized" in error_msg or "403" in error_msg:
             raise ValueError(
-                "❌ Clé d'authentification système Google Gemini invalide. Allez dans Paramètres pour la corriger."
+                "❌ Clé d'authentification système invalide. Veuillez contacter l'administrateur."
             )
-        raise ValueError(f"❌ Erreur API Gemini : {e}")
+        raise ValueError(f"❌ Erreur du service de traitement : {e}")
 
 
 def call_llm(api_key: str, provider: str, system_prompt: str, user_content: str) -> str:
-    """Dispatch vers le bon fournisseur LLM."""
+    """Dispatch vers le moteur de traitement configuré."""
     if "openai" in provider.lower():
         return _call_openai(api_key, system_prompt, user_content)
     elif "deepseek" in provider.lower():
@@ -1229,7 +1303,7 @@ def _merge_json_values(base_val, new_val):
 def analyse_cctp(api_key: str, provider: str, dossier_text: str) -> dict:
     """
     Envoie le texte combiné des documents uploadés (RC, CCTP, DPGF, Annexes, Entreprise)
-    au LLM pour extraire et croiser toutes les informations clés au format JSON.
+    au moteur d'analyse pour extraire et croiser toutes les informations clés au format JSON.
     Gère le chunking si le dossier complet est très volumineux.
     """
     chunks = chunk_text(dossier_text)
@@ -1271,8 +1345,8 @@ def analyse_cctp(api_key: str, provider: str, dossier_text: str) -> dict:
                 all_analyses.append(parsed)
             except json.JSONDecodeError:
                 raise ValueError(
-                    "❌ Le LLM n'a pas retourné un JSON valide après deux tentatives. "
-                    "Essayez de réduire la taille des fichiers ou changez de fournisseur LLM."
+                    "❌ Le système n'a pas pu structurer les données après deux tentatives. "
+                    "Essayez de réduire la taille des fichiers déposés."
                 )
 
     if len(all_analyses) == 1:
@@ -1884,15 +1958,15 @@ elif page == "Génération":
     nom_ent = config["entreprise"].get("nom", "").strip()
     sub_hero = (
         f"Bienvenue <b>{nom_ent}</b> · Déposez simultanément vos pièces de marché (<b>RC, CCTP, DPGF/DQE, Annexes</b>) et vos <b>Documents Entreprise</b> (PDF, Word ou Excel). "
-        "L'IA les croise automatiquement pour rédiger un <b>Mémoire Technique</b> complet, chiffré et conforme au RC."
+        "Le moteur d'ingénierie les croise automatiquement pour rédiger un <b>Mémoire Technique</b> complet, chiffré et conforme au RC."
         if nom_ent
         else "Déposez simultanément vos pièces de marché (<b>RC, CCTP, DPGF/DQE, Annexes</b>) et vos <b>Documents Entreprise</b> (PDF, Word ou Excel). "
-             "L'IA les croise automatiquement pour rédiger un <b>Mémoire Technique</b> complet, chiffré et conforme au RC."
+             "Le moteur d'ingénierie les croise automatiquement pour rédiger un <b>Mémoire Technique</b> complet, chiffré et conforme au RC."
     )
     st.markdown(
         f"""
         <div class="mb-hero">
-            <div class="mb-hero-badge">🏗️ INGÉNIERIE D'APPELS D'OFFRES BTP · CROISEMENT IA MULTI-DOCUMENTS</div>
+            <div class="mb-hero-badge">🏗️ INGÉNIERIE D'APPELS D'OFFRES BTP · CROISEMENT MULTI-DOCUMENTS</div>
             <div class="mb-hero-title">Générateur de Mémoires Techniques sur-mesure</div>
             <p class="mb-hero-sub">{sub_hero}</p>
         </div>
@@ -1901,7 +1975,7 @@ elif page == "Génération":
     )
 
     if not config["api_key"].strip():
-        st.warning("⚠️ **Clé d'authentification système manquante.** Rendez-vous dans l'onglet **Paramètres** pour la configurer.")
+        st.warning("⚠️ **Configuration système incomplète.** Veuillez contacter l'administrateur de la plateforme.")
 
     _feat_main = vt.featured_video()
     if _feat_main:
@@ -2096,7 +2170,7 @@ elif page == "Génération":
                 </div>
                 <div class="mb-zone-title">🏢 Les Documents de l'Entreprise (Ancien mémoire, Personnel, Matériel, Certifications)</div>
                 <div class="mb-zone-desc">
-                    L'IA y puise vos ressources réelles pour associer à chaque tâche du CCTP votre personnel habilité, vos engins et vos filières de tri.
+                    Le système y puise vos ressources réelles pour associer à chaque tâche du CCTP votre personnel habilité, vos engins et vos filières de tri.
                 </div>
                 <div class="mb-tag-row">
                     <span class="mb-tag">👥 Organigramme & CV</span>
@@ -2792,3 +2866,81 @@ elif page == "Vidéos":
                 finally:
                     if audio_path:
                         audio_path.unlink(missing_ok=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# PAGE : ⚖️ CONDITIONS GÉNÉRALES D'UTILISATION (CGU)
+# ─────────────────────────────────────────────────────────────────────────
+elif page == "CGU":
+    st.markdown(
+        """
+        <div class="mb-hero">
+            <div class="mb-hero-badge">⚖️ CADRE CONTRACTUEL & MENTIONS LÉGALES</div>
+            <div class="mb-hero-title">Conditions Générales d'Utilisation (CGU)</div>
+            <p class="mb-hero-sub">
+                Les présentes Conditions Générales d'Utilisation régissent l'accès et l'utilisation de la plateforme <b>MarketBuilding Pro</b> dédiée à l'élaboration de mémoires techniques pour les marchés publics et privés du BTP.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="mb-zone-header" style="border-left:4px solid #2563EB; margin-bottom:14px;">
+            <div class="mb-zone-title">Article 1 · Objet du Service</div>
+            <div class="mb-zone-desc" style="margin-bottom:0;">
+                La plateforme <b>MarketBuilding Pro</b> met à la disposition des entreprises du Bâtiment et des Travaux Publics (BTP) un outil d'assistance documentaire permettant d'importer les pièces d'un Dossier de Consultation des Entreprises (<i>Règlement de Consultation, CCTP, DPGF/DQE, PGC et annexes chantier</i>) ainsi que les documents internes de l'entreprise candidate afin de générer une proposition de <b>Mémoire Technique</b> structurée aux formats PDF et Word (<code>.docx</code>).
+            </div>
+        </div>
+
+        <div class="mb-zone-header" style="border-left:4px solid #F59E0B; margin-bottom:14px;">
+            <div class="mb-zone-top">
+                <span class="mb-zone-num" style="background:rgba(245,158,11,0.15); color:#F59E0B;">INFORMATION TRANSPARENCE TECHNOLOGIQUE (RÈGLEMENT IA / AI ACT)</span>
+            </div>
+            <div class="mb-zone-title">Article 2 · Recours à l'Intelligence Artificielle (IA)</div>
+            <div class="mb-zone-desc" style="margin-bottom:0;">
+                L'Utilisateur est expressément informé et reconnaît que le fonctionnement de la plateforme <b>MarketBuilding Pro</b> repose sur des <b>systèmes d'Intelligence Artificielle (IA) générative et d'analyse sémantique automatisée</b>.<br><br>
+                • <b>Traitement par Intelligence Artificielle :</b> Les algorithmes d'IA analysent, extraient et croisent automatiquement les données textuelles et chiffrées issues des documents déposés (critères du RC, prescriptions des CCTP, quantités de la DPGF, contraintes du PGC et ressources de l'entreprise) pour rédiger le contenu du mémoire technique.<br>
+                • <b>Règle Anti-Invention et balises <code>[À COMPLÉTER]</code> :</b> Bien que l'IA soit paramétrée avec une consigne stricte lui interdisant d'inventer des données absentes des pièces fournies (en insérant des marqueurs explicites <code>[À COMPLÉTER : préciser ici...]</code>), tout système d'Intelligence Artificielle comporte des limites inhérentes et peut produire des approximations, omissions ou erreurs d'interprétation technique.
+            </div>
+        </div>
+
+        <div class="mb-zone-header" style="border-left:4px solid #10B981; margin-bottom:14px;">
+            <div class="mb-zone-title">Article 3 · Obligation de Relecture et Validation Humaine par l'Utilisateur</div>
+            <div class="mb-zone-desc" style="margin-bottom:0;">
+                Les documents générés par l'Intelligence Artificielle constituent des <b>projets préparatoires d'aide à la rédaction</b> et ne sauraient remplacer l'expertise technique du soumissionnaire.<br><br>
+                Avant toute remise d'offre auprès d'un Maître d'Ouvrage public ou privé, l'Utilisateur s'engage impérativement à :<br>
+                1. <b>Relire intégralement</b> le mémoire technique généré (PDF et Word) ;<br>
+                2. <b>Renseigner toutes les balises</b> <code>[À COMPLÉTER : ...]</code> signalées par le système ;<br>
+                3. <b>Vérifier l'exactitude technique, réglementaire et quantitative</b> (normes DTU, cadences, effectifs, matériel, sécurité PGC, filières déchets SOSED) des engagements pris dans le document final.<br><br>
+                L'entreprise soumissionnaire demeure seule et unique responsable du contenu de l'offre qu'elle dépose dans le cadre d'un marché.
+            </div>
+        </div>
+
+        <div class="mb-zone-header" style="border-left:4px solid #3B82F6; margin-bottom:14px;">
+            <div class="mb-zone-title">Article 4 · Confidentialité des Pièces et Propriété Intellectuelle</div>
+            <div class="mb-zone-desc" style="margin-bottom:0;">
+                • <b>Propriété des documents :</b> L'Utilisateur conserve l'entière propriété intellectuelle des pièces qu'il importe sur la plateforme ainsi que des mémoires techniques générés pour son compte.<br>
+                • <b>Confidentialité :</b> Les pièces de marché (DCE) et les justificatifs d'entreprise (CV, organigrammes, parc matériel, certifications) sont traités de manière strictement confidentielle aux seules fins de générer les livrables demandés par l'Utilisateur.
+            </div>
+        </div>
+
+        <div class="mb-zone-header" style="border-left:4px solid #8B5CF6; margin-bottom:14px;">
+            <div class="mb-zone-title">Article 5 · Limitation de Responsabilité et Droit Applicable</div>
+            <div class="mb-zone-desc" style="margin-bottom:0;">
+                L'éditeur de la plateforme <b>MarketBuilding Pro</b> est tenu à une obligation de moyens dans la fourniture du service d'assistance rédactionnelle par Intelligence Artificielle. Sa responsabilité ne pourra en aucun cas être engagée en cas de rejet d'une candidature ou d'une offre, de perte de chance de remporter un marché, de pénalités d'exécution ou d'inexactitude non corrigée par l'Utilisateur lors de sa relecture.<br><br>
+                Les présentes CGU sont soumises au droit français. L'utilisation de la plateforme vaut acceptation pleine et entière des présentes Conditions Générales d'Utilisation.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# Pied de page discret rappelant les CGU sur toutes les pages
+st.markdown(
+    "<div style='text-align:center; margin-top:36px; padding-top:14px; border-top:1px solid var(--border-color); color:var(--text-muted); font-size:12px;'>"
+    "MarketBuilding Pro · Plateforme soumise aux <b>Conditions Générales d'Utilisation (CGU)</b> (consultables dans le menu de navigation)."
+    "</div>",
+    unsafe_allow_html=True,
+)
