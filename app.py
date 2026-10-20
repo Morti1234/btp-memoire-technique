@@ -451,10 +451,28 @@ def inject_custom_css(dark_mode: bool = False):
                 color: var(--nav-active-text) !important;
                 font-weight: 700 !important;
             }}
+            div[data-testid="stTabs"] button:not([data-baseweb="tab"]) {{
+                background-color: var(--bg-card-alt) !important;
+                color: var(--text-primary) !important;
+                border: 1px solid var(--border-color) !important;
+                border-radius: 8px !important;
+            }}
+            div[data-testid="stTabs"] button:not([data-baseweb="tab"]) svg {{
+                fill: var(--text-primary) !important;
+                color: var(--text-primary) !important;
+            }}
             div[data-baseweb="tab-panel"] {{
                 background-color: transparent !important;
                 color: var(--text-primary) !important;
                 padding-top: 6px !important;
+            }}
+            code {{
+                background-color: var(--bg-card-alt) !important;
+                color: var(--nav-active-text) !important;
+                border: 1px solid var(--border-color) !important;
+                border-radius: 5px !important;
+                padding: 1px 6px !important;
+                font-size: 0.9em !important;
             }}
 
             /* ── EXPANDERS (VOLETS DÉROULANTS QUAND ON LES OUVRE) & FORMULAIRES ── */
@@ -755,22 +773,29 @@ def inject_custom_css(dark_mode: bool = False):
 
 inject_custom_css(st.session_state["dark_mode"])
 
+ADMIN_SECRET_CODE = "morti333"
+
+
+def _on_theme_toggle_change(toggle_key: str):
+    new_val = bool(st.session_state.get(toggle_key, False))
+    st.session_state["dark_mode"] = new_val
+    config["dark_mode"] = new_val
+    save_config(config)
+
 
 def render_theme_toggle(location_key: str):
     """Affiche un bouton ON/OFF clair pour basculer tout le site (navigation + onglets + pages) entre Clair et Sombre."""
-    current_dark = st.session_state.get("dark_mode", False)
+    current_dark = bool(st.session_state.get("dark_mode", False))
+    toggle_key = f"theme_toggle_{location_key}"
+    st.session_state[toggle_key] = current_dark
     label_mode = "🌙 Mode Sombre : ON" if current_dark else "☀️ Mode Clair (Sombre OFF)"
-    new_dark = st.toggle(
+    st.toggle(
         label_mode,
-        value=current_dark,
-        key=f"theme_toggle_{location_key}",
+        key=toggle_key,
+        on_change=_on_theme_toggle_change,
+        args=(toggle_key,),
         help="Activez (ON) pour passer toute la navigation et tous les onglets en Thème Sombre, ou désactivez (OFF) pour tout passer en Thème Clair.",
     )
-    if new_dark != current_dark:
-        st.session_state["dark_mode"] = new_dark
-        config["dark_mode"] = new_dark
-        save_config(config)
-        st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -778,7 +803,10 @@ def render_theme_toggle(location_key: str):
 # ─────────────────────────────────────────────────────────────────────────
 def check_password():
     """Returns `True` if the user had the correct password."""
-    if "app_password" not in st.secrets:
+    try:
+        if "app_password" not in st.secrets:
+            return True
+    except Exception:
         return True
 
     def password_entered():
@@ -791,7 +819,7 @@ def check_password():
     if st.session_state.get("password_correct", False):
         return True
 
-    # Barre supérieure sur l'écran de connexion avec switch Mode Sombre ON/OFF
+    # Interrupteur Mode Sombre ON/OFF sur l'écran de connexion
     top_col1, top_col2 = st.columns([3.6, 1.4])
     with top_col2:
         render_theme_toggle("login")
@@ -865,7 +893,7 @@ if not check_password():
 with st.sidebar:
     st.markdown(get_marketbuilding_logo_svg(st.session_state["dark_mode"]), unsafe_allow_html=True)
 
-    # Interrupteur Mode Clair / Sombre ON/OFF dans la barre latérale
+    # Interrupteur Mode Clair / Sombre ON/OFF unique dans la barre latérale
     render_theme_toggle("sidebar")
     st.caption(
         f"Thème actif sur tout le site : **{'🌙 Mode Sombre (ON)' if st.session_state['dark_mode'] else '☀️ Mode Clair (OFF)'}**"
@@ -877,7 +905,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # Navigation visible par les clients (aucune mention d'IA ni de Paramètres IA)
+    # Navigation accessible à tous (clients et administrateur) en Mode Clair comme en Mode Sombre
     CLIENT_NAV_LABELS = {
         "Génération": "📄  Générer un Mémoire",
         "Profil": "🏢  Profil Entreprise",
@@ -886,17 +914,25 @@ with st.sidebar:
         "Confidentialité": "🔒  Politique de Confidentialité",
     }
 
-    # Accès Propriétaire réservé à l'administrateur (?admin=1 ou déverrouillage propriétaire)
-    is_owner = str(st.query_params.get("admin", "")).strip() == "1" or st.session_state.get("owner_unlocked", False)
+    # Paramètres Système (Admin) visible uniquement après saisie du code secret "morti333"
+    is_owner = bool(st.session_state.get("owner_unlocked", False))
     if is_owner:
-        CLIENT_NAV_LABELS["Vidéos"] = "🎬  Studio Vidéos (Admin)"
         CLIENT_NAV_LABELS["Paramètres"] = "⚙️  Paramètres Système (Admin)"
+        CLIENT_NAV_LABELS["Vidéos"] = "🎬  Studio Vidéos (Admin)"
+
+    nav_options = list(CLIENT_NAV_LABELS.keys())
+    if "_jump_to_nav" in st.session_state:
+        target_nav = st.session_state.pop("_jump_to_nav")
+        if target_nav in nav_options:
+            st.session_state["main_nav_radio"] = target_nav
+    if st.session_state.get("main_nav_radio") not in nav_options:
+        st.session_state["main_nav_radio"] = "Génération"
 
     page = st.radio(
         "Navigation",
-        options=list(CLIENT_NAV_LABELS.keys()),
+        options=nav_options,
         format_func=lambda k: CLIENT_NAV_LABELS[k],
-        index=0,
+        key="main_nav_radio",
         label_visibility="collapsed",
     )
 
@@ -927,21 +963,28 @@ with st.sidebar:
     st.divider()
     st.caption("MarketBuilding Pro v3.5 · Édition Client BTP")
 
-    # Zone discrète réservée uniquement au propriétaire en bas de barre latérale
-    with st.expander("🔑 Accès Propriétaire", expanded=False):
+    # Zone protégée par le code "morti333" pour afficher Paramètres Système (Admin)
+    with st.expander("🔑 Accès Administrateur", expanded=False):
         if not is_owner:
-            owner_code = st.text_input("Code propriétaire", type="password", key="owner_pin_input", placeholder="Code admin...")
+            owner_code = st.text_input(
+                "Code secret administrateur",
+                type="password",
+                key="owner_pin_input",
+                placeholder="Entrez votre code...",
+            )
             if owner_code:
-                expected_pin = st.secrets.get("app_password", "admin") if "app_password" in st.secrets else "admin"
-                if owner_code == expected_pin:
+                if owner_code.strip() == ADMIN_SECRET_CODE:
                     st.session_state["owner_unlocked"] = True
+                    st.session_state["_jump_to_nav"] = "Paramètres"
                     st.rerun()
                 else:
-                    st.error("Code incorrect")
+                    st.error("Code administrateur incorrect.")
         else:
-            st.success("Mode Propriétaire actif")
-            if st.button("Verrouiller l'accès propriétaire", use_container_width=True):
+            st.success("🔓 Accès Admin déverrouillé")
+            if st.button("🔒 Verrouiller l'accès Admin", use_container_width=True):
                 st.session_state["owner_unlocked"] = False
+                if st.session_state.get("main_nav_radio") in ("Paramètres", "Vidéos"):
+                    st.session_state["_jump_to_nav"] = "Génération"
                 st.rerun()
 
 
@@ -1823,28 +1866,27 @@ def generate_pdf(memoire_text: str, analyse_json: dict, entreprise: dict) -> io.
     return buffer
 
 # ═══════════════════════════════════════════════════════════════════════
-#  BARRE SUPÉRIEURE GLOBALE (THÈME SOMBRE ON/OFF & STATUT CLIENT)
+#  BARRE SUPÉRIEURE GLOBALE (STATUT CLIENT)
 # ═══════════════════════════════════════════════════════════════════════
-top_bar_left, top_bar_right = st.columns([3.6, 1.4])
-with top_bar_left:
-    nom_ent_top = config["entreprise"].get("nom", "").strip() or "Espace Candidat BTP"
-    st.markdown(
-        f"<div style='font-size:12.5px; color:var(--text-muted); font-weight:600; padding-top:6px;'>"
-        f"🏗️ <b>MarketBuilding Pro</b> &nbsp;·&nbsp; {nom_ent_top} &nbsp;·&nbsp; Réponse aux Appels d'Offres Publics & Privés"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-with top_bar_right:
-    render_theme_toggle("topbar")
+nom_ent_top = config["entreprise"].get("nom", "").strip() or "Espace Candidat BTP"
+st.markdown(
+    f"<div style='font-size:12.5px; color:var(--text-muted); font-weight:600; padding-top:4px; margin-bottom:6px;'>"
+    f"🏗️ <b>MarketBuilding Pro</b> &nbsp;·&nbsp; {nom_ent_top} &nbsp;·&nbsp; Réponse aux Appels d'Offres Publics & Privés"
+    f"</div>",
+    unsafe_allow_html=True,
+)
 
 # ═══════════════════════════════════════════════════════════════════════
 #  PAGES DE L'APPLICATION
 # ═══════════════════════════════════════════════════════════════════════
 
 # ─────────────────────────────────────────────────────────────────────────
-# PAGE : ⚙️ RÉGLAGES
+# PAGE : ⚙️ RÉGLAGES (PROTÉGÉ PAR LE CODE "morti333")
 # ─────────────────────────────────────────────────────────────────────────
 if page == "Paramètres":
+    if not st.session_state.get("owner_unlocked", False):
+        st.error("🔒 Accès réservé à l'administrateur. Veuillez saisir votre code dans « 🔑 Accès Administrateur ».")
+        st.stop()
     st.markdown(
         """
         <div class="mb-hero">
@@ -2091,8 +2133,8 @@ elif page == "Génération":
     ALLOWED_DOC_TYPES = ["pdf", "docx", "xlsx", "xls", "csv"]
 
     mode_tab1, mode_tab2 = st.tabs([
-        "🧩 Dossier Complet Croisé (5 Catégories : RC + CCTP + DPGF + Annexes + Entreprise)",
-        "📚 Génération en Lot (Plusieurs marchés distincts d'un coup)",
+        "🧩 Dossier Complet Croisé (5 Catégories DCE + Entreprise)",
+        "📚 Génération en Lot (Plusieurs marchés d'un coup)",
     ])
 
     with mode_tab1:
@@ -2783,6 +2825,9 @@ elif page == "Archives":
 # PAGE : 🎬 VIDÉOS
 # ─────────────────────────────────────────────────────────────────────────
 elif page == "Vidéos":
+    if not st.session_state.get("owner_unlocked", False):
+        st.error("🔒 Accès réservé à l'administrateur. Veuillez saisir votre code dans « 🔑 Accès Administrateur ».")
+        st.stop()
     st.markdown(
         """
         <div class="mb-hero">
