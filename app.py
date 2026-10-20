@@ -422,50 +422,175 @@ with st.sidebar:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 3. FONCTIONS D'EXTRACTION PDF
+# 3. FONCTIONS D'EXTRACTION MULTI-FORMATS (PDF, WORD, EXCEL, CSV)
 # ─────────────────────────────────────────────────────────────────────────
+
+SUPPORTED_DOC_TYPES = ["pdf", "docx", "xlsx", "xls", "csv", "txt"]
+
 
 def extract_text_from_pdf(uploaded_file) -> str:
     """
-    Extrait le texte brut d'un PDF uploadé via Streamlit.
+    Extrait le texte brut ET les tableaux d'un PDF uploadé via Streamlit.
     Utilise pdfplumber pour un parsing robuste (gère les tableaux, colonnes…).
-    Lève une ValueError si le PDF est scanné / ne contient pas de texte.
     """
     text_pages: list[str] = []
+    raw_bytes = uploaded_file.getvalue() if hasattr(uploaded_file, "getvalue") else uploaded_file.read()
     try:
-        with pdfplumber.open(io.BytesIO(uploaded_file.read())) as pdf:
+        with pdfplumber.open(io.BytesIO(raw_bytes)) as pdf:
             for i, page in enumerate(pdf.pages):
+                parts: list[str] = []
                 page_text = page.extract_text()
                 if page_text:
-                    text_pages.append(f"--- Page {i + 1} ---\n{page_text}")
+                    parts.append(page_text)
+                # Extraction complémentaire des tableaux (utile pour DPGF / barèmes RC en PDF)
+                try:
+                    tables = page.extract_tables() or []
+                    for t_idx, table in enumerate(tables, start=1):
+                        cleaned_rows = []
+                        for row in table:
+                            if not row:
+                                continue
+                            cells = [re.sub(r"\s+", " ", (c or "").strip()) for c in row]
+                            if any(cells):
+                                cleaned_rows.append(" | ".join(cells))
+                        if len(cleaned_rows) >= 2:
+                            parts.append(f"[Tableau page {i + 1}.{t_idx}]\n" + "\n".join(cleaned_rows))
+                except Exception:
+                    pass
+                if parts:
+                    text_pages.append(f"--- Page {i + 1} ---\n" + "\n\n".join(parts))
     except Exception as exc:
         raise ValueError(
-            f"Impossible de lire le fichier PDF. Vérifiez qu'il n'est pas corrompu. "
+            f"Impossible de lire le fichier PDF ({getattr(uploaded_file, 'name', 'document')}). "
             f"Détail : {exc}"
         ) from exc
 
     if not text_pages:
         raise ValueError(
-            "Le PDF uploadé ne contient aucun texte extractible. "
-            "Il s'agit probablement d'un document scanné (image). "
-            "Veuillez fournir un PDF avec du texte sélectionnable (non scanné) "
-            "ou effectuer un OCR au préalable."
+            f"Le PDF « {getattr(uploaded_file, 'name', 'document')} » ne contient aucun texte extractible "
+            "(document scanné sans OCR)."
         )
 
-    full_text = "\n\n".join(text_pages)
-    return full_text
+    return "\n\n".join(text_pages)
+
+
+def extract_text_from_docx(uploaded_file) -> str:
+    """Extrait les paragraphes et les tableaux d'un fichier Word (.docx)."""
+    raw_bytes = uploaded_file.getvalue() if hasattr(uploaded_file, "getvalue") else uploaded_file.read()
+    try:
+        doc = Document(io.BytesIO(raw_bytes))
+    except Exception as exc:
+        raise ValueError(f"Impossible de lire le fichier Word ({getattr(uploaded_file, 'name', '')}) : {exc}") from exc
+
+    blocks: list[str] = []
+    for p in doc.paragraphs:
+        txt = p.text.strip()
+        if txt:
+            blocks.append(txt)
+
+    for t_idx, table in enumerate(doc.tables, start=1):
+        rows_txt = []
+        for row in table.rows:
+            cells = [re.sub(r"\s+", " ", c.text.strip()) for c in row.cells]
+            if any(cells):
+                rows_txt.append(" | ".join(cells))
+        if rows_txt:
+            blocks.append(f"[Tableau Word {t_idx}]\n" + "\n".join(rows_txt))
+
+    if not blocks:
+        raise ValueError(f"Le fichier Word « {getattr(uploaded_file, 'name', '')} » est vide.")
+    return "\n\n".join(blocks)
+
+
+def extract_text_from_excel(uploaded_file) -> str:
+    """Extrait toutes les feuilles et lignes d'un fichier Excel (.xlsx, .xls) ou CSV (DPGF / DQE / listes)."""
+    import pandas as pd
+
+    name = getattr(uploaded_file, "name", "tableau.xlsx")
+    suffix = Path(name).suffix.lower()
+    raw_bytes = uploaded_file.getvalue() if hasattr(uploaded_file, "getvalue") else uploaded_file.read()
+
+    try:
+        if suffix == ".csv":
+            try:
+                df = pd.read_csv(io.BytesIO(raw_bytes))
+            except UnicodeDecodeError:
+                df = pd.read_csv(io.BytesIO(raw_bytes), encoding="latin-1", sep=None, engine="python")
+            sheets = {"Feuille_CSV": df}
+        else:
+            sheets = pd.read_excel(io.BytesIO(raw_bytes), sheet_name=None)
+    except Exception as exc:
+        raise ValueError(f"Impossible de lire le tableur « {name} » : {exc}") from exc
+
+    out_sheets: list[str] = []
+    for sheet_name, df in sheets.items():
+        df = df.dropna(how="all").dropna(axis=1, how="all")
+        if df.empty:
+            continue
+        df = df.fillna("")
+        headers = [str(col).strip() for col in df.columns]
+        lines = [f"--- Feuille : {sheet_name} ---", " | ".join(headers)]
+        for _, row in df.iterrows():
+            vals = [re.sub(r"\s+", " ", str(v).strip()) for v in row.values]
+            if any(vals):
+                lines.append(" | ".join(vals))
+        out_sheets.append("\n".join(lines))
+
+    if not out_sheets:
+        raise ValueError(f"Le tableur « {name} » ne contient aucune donnée exploitable.")
+    return "\n\n".join(out_sheets)
+
+
+def extract_text_from_document(uploaded_file) -> str:
+    """Extrait le texte de n'importe quel fichier supporté (PDF, Word .docx, Excel .xlsx/.xls/.csv, .txt)."""
+    name = getattr(uploaded_file, "name", "document.pdf")
+    suffix = Path(name).suffix.lower()
+    if hasattr(uploaded_file, "seek"):
+        uploaded_file.seek(0)
+
+    if suffix == ".pdf":
+        return extract_text_from_pdf(uploaded_file)
+    elif suffix == ".docx":
+        return extract_text_from_docx(uploaded_file)
+    elif suffix in (".xlsx", ".xls", ".csv"):
+        return extract_text_from_excel(uploaded_file)
+    elif suffix == ".txt":
+        raw = uploaded_file.getvalue() if hasattr(uploaded_file, "getvalue") else uploaded_file.read()
+        return raw.decode("utf-8", errors="replace")
+    else:
+        raise ValueError(f"Format de fichier non supporté ({suffix}) pour « {name} ».")
+
+
+def extract_category_documents(files_list, category_label: str) -> str:
+    """
+    Extrait et concatène un ou plusieurs fichiers d'une même catégorie
+    avec des en-têtes clairs indiquant le nom de chaque fichier source.
+    """
+    if not files_list:
+        return ""
+    if not isinstance(files_list, list):
+        files_list = [files_list]
+
+    extracted_parts: list[str] = []
+    for f in files_list:
+        if f is None:
+            continue
+        txt = extract_text_from_document(f)
+        extracted_parts.append(
+            f"================ {category_label.upper()} : {f.name} ================\n{txt}"
+        )
+    return "\n\n".join(extracted_parts)
 
 
 def chunk_text(text: str, max_chars: int = 60_000) -> list[str]:
     """
     Découpe un texte long en morceaux (chunks) de taille maîtrisée.
     Chaque chunk fait au maximum `max_chars` caractères.
-    Le découpage se fait par page (marqueur '--- Page') pour conserver le contexte.
     """
     if len(text) <= max_chars:
         return [text]
 
-    pages = re.split(r"(?=--- Page \d+)", text)
+    pages = re.split(r"(?=--- Page \d+|--- Feuille :|================ )", text)
     chunks: list[str] = []
     current_chunk = ""
 
@@ -483,129 +608,149 @@ def chunk_text(text: str, max_chars: int = 60_000) -> list[str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 4. FONCTIONS D'APPEL AU LLM (OpenAI / Gemini)
+# 4. PROMPTS D'ANALYSE ET DE RÉDACTION MULTI-DOCUMENTS
 # ─────────────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT_ANALYSE = textwrap.dedent("""\
-Tu es un expert en marchés publics et privés du BTP en France.
-On te fournit le texte d'un Cahier des Clauses Techniques Particulières (CCTP).
+Tu es un ingénieur études de prix et directeur technique expert en marchés publics et privés du BTP en France.
+On te fournit les pièces d'un Dossier de Consultation des Entreprises (DCE) et/ou les documents de l'entreprise candidate, répartis jusqu'en 5 catégories :
+1. Règlement de Consultation (RC)
+2. Cahiers des Clauses Techniques Particulières (CCTP Général Lot 00 + CCTP des lots techniques)
+3. DPGF / DQE (Devis Quantitatif Estimatif : quantités m², m³, ml, unités)
+4. Annexes Chantier (PGC Sécurité, Plan de masse, Étude de sol)
+5. Documents de l'Entreprise (Ancien mémoire, organigramme, CV, personnel, parc matériel, CACES/AIPR, certifications Qualibat/RGE/FNTP, fournisseurs, déchèteries)
 
-Ta mission : extraire TOUTES les informations clés sous forme de JSON structuré.
+Ta mission : extraire et croiser TOUTES les informations clés sous forme d'un JSON structuré exhaustif.
 
 Le JSON doit contenir EXACTEMENT les clés suivantes :
 {
-  "nom_projet": "Nom ou intitulé du projet / marché",
-  "maitre_ouvrage": "Nom du maître d'ouvrage (commanditaire)",
-  "lieu_execution": "Adresse ou localisation des travaux",
+  "nom_projet": "Nom ou intitulé exact du projet / marché",
+  "maitre_ouvrage": "Nom du maître d'ouvrage (commanditaire) et maître d'œuvre si mentionné",
+  "lieu_execution": "Adresse exacte et localisation du chantier",
   "dates_cles": {
-    "date_remise_offres": "Date limite de remise des offres (si mentionnée)",
-    "delai_execution": "Durée ou délai d'exécution des travaux",
-    "date_debut_prevue": "Date de début prévue (si mentionnée)"
+    "date_remise_offres": "Date limite de remise des offres",
+    "delai_execution": "Durée globale ou par phase / délai d'exécution des travaux",
+    "date_debut_prevue": "Date de démarrage prévue"
   },
-  "lots_concernes": ["Liste des lots concernés"],
-  "criteres_notation": [
-    {"critere": "Nom du critère", "ponderation": "Pondération en %"}
+  "reglement_consultation_rc": {
+    "criteres_valeur_technique": [
+      {"ordre": 1, "critere": "Intitulé exact du critère ou sous-critère dans l'ordre du RC", "bareme_points": "Pondération ou points", "attendus": "Détails exigés par l'acheteur"}
+    ],
+    "plan_impose": ["Titres et sous-titres imposés dans l'ordre exact du RC"],
+    "nombre_pages_max": "Nombre de pages maximum imposé par le RC (ou 'Non spécifié')"
+  },
+  "contraintes_chantier": [
+    "Contraintes précises : adresse, accès, gabarits, horaires de travail, riverains, site occupé, maintien en exploitation, réseaux"
   ],
-  "exigences_techniques": ["Liste des exigences techniques majeures"],
+  "lots_concernes": ["Liste des lots traités (ex: Lot 00 Général, Lot 01 Gros Œuvre, Lot 02 VRD...)"],
+  "exigences_techniques_par_lot": [
+    {
+      "lot": "Numéro et intitulé du lot",
+      "description_travaux": "Travaux demandés",
+      "materiaux_requis": ["Matériaux précis, marques/références ou performances exigées"],
+      "normes_dtu": ["DTU, normes NF/EN, Eurocodes, RGE, Qualibat exigés"],
+      "methodes_pose_autocontroles": ["Méthodes de mise en œuvre, tolérances, essais et autocontrôles exigés"]
+    }
+  ],
+  "quantites_dpgf": [
+    {"poste": "Désignation de l'ouvrage ou de la tâche", "quantite": "Quantité chiffrée exacte", "unite": "m², m³, ml, u, forfait...", "lot": "Lot concerné"}
+  ],
+  "annexes_securite_installation": {
+    "risques_specifiques_pgc": ["Risques sécurité spécifiques tirés du PGC / étude de sol"],
+    "coactivite": ["Contraintes de coactivité entre corps d'état ou avec l'exploitant"],
+    "installation_chantier": ["Base vie, cantonnements, clôtures, zones de stockage, grues/levage, accès engins"],
+    "contraintes_sol_reseaux": ["Données géotechniques (étude de sol), blindage, nappe, réseaux enterrés/aériens"]
+  },
+  "gestion_dechets_sosed": [
+    "Exigences SOSED/SOGED du CCTP, filières de tri, traçabilité Bordereaux de Suivi des Déchets"
+  ],
+  "ressources_entreprise_extraites": {
+    "identite_et_chiffres": "Nom, SIRET, effectif, CA, implantations extraits des documents entreprise",
+    "organigramme_et_cv": ["Noms, fonctions, ancienneté, diplômes et CV de l'encadrement et des chefs d'équipe"],
+    "effectifs_et_habilitations": ["Équipes d'exécution et diplômes sécurité : CACES, AIPR, SST, habilitations électriques, travail en hauteur"],
+    "parc_materiel_engins": ["Liste exacte des engins, camions, grues, échafaudages, outillages et petits matériels"],
+    "certifications": ["Certifications détenues : Qualibat, RGE, FNTP, ISO, MASE..."],
+    "fournisseurs_habituels": ["Noms des fournisseurs de matériaux et marques utilisés par l'entreprise"],
+    "decheteries_partenaires": ["Noms, adresses et distances des déchèteries / centres de tri habituels de l'entreprise"],
+    "references_chantiers": ["Chantiers similaires réalisés par l'entreprise"]
+  },
+  "criteres_notation": [
+    {"critere": "Nom du critère", "ponderation": "Pondération ou points"}
+  ],
+  "exigences_techniques": ["Synthèse des exigences techniques majeures"],
   "materiaux_requis": [
     {"materiau": "Nom du matériau", "specification": "Détail / norme / référence"}
   ],
   "ressources_humaines": [
     {"profil": "Type de profil requis", "detail": "Qualification, certification…"}
   ],
-  "normes_certifications": ["Liste des normes et certifications exigées (NF, CE, RGE, Qualibat…)"],
-  "contraintes_securite_environnement": ["Contraintes SSE mentionnées"]
+  "normes_certifications": ["Liste des normes et certifications exigées"],
+  "contraintes_securite_environnement": ["Synthèse des contraintes SSE"]
 }
 
 IMPORTANT :
-- Sois exhaustif, n'oublie aucun matériau ni aucune exigence.
-- Si une information n'est pas mentionnée, mets "Non spécifié".
-- Réponds UNIQUEMENT avec le JSON, sans texte avant ni après.
+- Sois ultra-précis : conserve tous les chiffres, quantités DPGF (m², m³, ml, u), numéros de DTU, noms propres, marques, modèles d'engins et distances.
+- Si une information n'est pas mentionnée dans les documents fournis, mets "Non spécifié".
+- Réponds UNIQUEMENT avec le JSON valide, sans texte avant ni après.
 """)
 
 SYSTEM_PROMPT_REDACTION = textwrap.dedent("""\
-Tu es un rédacteur technique expert en mémoires techniques pour les marchés publics
-et privés du BTP en France. Tu rédiges de manière professionnelle, structurée et
-convaincante pour maximiser la note technique du dossier.
+Tu es un Directeur Technique BTP expert en rédaction de Mémoires Techniques gagnants pour les appels d'offres publics et privés en France.
 
 On te fournit :
-1. L'analyse structurée (JSON) du CCTP.
-2. Le profil de l'entreprise candidate (si disponible).
+1. L'analyse structurée et croisée (JSON) issue des documents uploadés :
+   - Règlement de Consultation (RC)
+   - Un ou plusieurs CCTP (CCTP Général Lot 00 + CCTP des lots techniques)
+   - La DPGF / DQE (quantités exactes : m², m³, ml, unités)
+   - Les Annexes Chantier (PGC Sécurité, Plan de masse, Étude de sol)
+   - Les Documents de l'Entreprise (Ancien mémoire, organigramme, CV, personnel, parc matériel, CACES/AIPR, certifications, fournisseurs, déchèteries)
+2. Le profil de l'entreprise candidate et des extraits directs des pièces fournies.
 
-Ta mission : rédiger un MÉMOIRE TECHNIQUE complet, professionnel et PRÊT À L'EMPLOI.
+Ta mission : rédiger un MÉMOIRE TECHNIQUE complet, ultra-précis, personnalisé et structuré pour obtenir la note technique maximale.
 
-RÈGLE D'OR ABSOLUE :
-1. ADAPTATION TOTALE AU CLIENT : Tu dois te baser en priorité sur les informations fournies dans la section "Profil de l'entreprise candidate". Le mémoire technique doit donner l'impression d'avoir été écrit SPÉCIFIQUEMENT pour cette entreprise (utilise son vrai nom, son adresse, ses spécificités si elles sont fournies).
-2. PAS DE RÉSUMÉ : Tu ne DOIS PAS faire un simple résumé du CCTP. Tu DOIS rédiger une VÉRITABLE OFFRE TECHNIQUE ET COMMERCIALE du point de vue de l''entreprise candidate qui répond à l'appel d'offres.
-- Utilise systématiquement le pronom "Nous" ou "Notre entreprise".
-- Argumente, explique COMMENT l'entreprise va réaliser les travaux, avec quelles méthodes, pour prouver son expertise.
-- Sois très convaincant, professionnel, détaillé et orienté "solutions". C'est un document pour GAGNER un marché.
-- Tu dois être OMNISCIENT : Même si le profil de l'entreprise est
-incomplet ou absent, tu dois rédiger un mémoire technique complet et crédible.
-Pour les informations manquantes de l'entreprise :
-- Rédige des sections génériques mais professionnelles et réalistes.
-- Propose des contenus types qu'une PME du BTP compétente inclurait.
-- Utilise des formulations comme "Notre entreprise", "Notre équipe", "Nos références".
-- NE METS JAMAIS de marqueurs [À COMPLÉTER]. Le document doit être prêt à être lu.
-- Déduis intelligemment le type d'entreprise nécessaire à partir du CCTP
-  (plomberie, électricité, gros œuvre, etc.) et rédige en conséquence.
+═══════════════════════════════════════════════════════════════════════════
+RÈGLES IMPÉRATIVES DE RÉDACTION ET DE CROISEMENT DES DOCUMENTS :
+═══════════════════════════════════════════════════════════════════════════
 
-STRUCTURE OBLIGATOIRE du mémoire (utilise ces titres exacts) :
+1. SUIVRE L'ORDRE EXACT DU RÈGLEMENT DE CONSULTATION (RC) :
+   - Si le RC impose un plan ou un ordre précis de critères/sous-critères de la "Valeur Technique" (voir `reglement_consultation_rc` dans le JSON), le sommaire et les grands titres (`# 1. ...`, `# 2. ...`) de ton mémoire technique DOIVENT reprendre **exactement l'ordre et les intitulés des critères de notation du RC** (ainsi que la contrainte éventuelle de nombre de pages).
+   - Si aucun RC n'a été fourni ou si le RC ne précise pas de plan, utilise exactement les 8 sections obligatoires détaillées plus bas.
 
-# 1. PRÉSENTATION DE L'ENTREPRISE
-   - Présentation générale (utilise les infos du profil si fournies, sinon rédige
-     une présentation type cohérente avec les lots du CCTP)
-   - Moyens humains et organigramme de chantier
-   - Références et expériences similaires (propose des références crédibles
-     en rapport avec le type de projet du CCTP)
-   - Certifications et qualifications (RGE, Qualibat… adaptées au CCTP)
+2. FUSIONNER LES DIFFÉRENTS CCTP :
+   - Si plusieurs CCTP ont été fournis (ex: CCTP Général Lot 00 + CCTP de lots techniques comme Gros Œuvre, VRD, Électricité, Plomberie…), combine systématiquement les contraintes générales du chantier (accès, horaires, riverains, site occupé, gestion des interfaces) avec les prescriptions techniques d'exécution propres à chaque lot.
 
-# 2. COMPRÉHENSION DU PROJET
-   - Analyse du contexte et des enjeux
-   - Synthèse des exigences du CCTP
+3. CROISER OBLIGATOIREMENT CCTP + DPGF + ENTREPRISE (ZÉRO PHRASE VAGUE) :
+   - **Interdiction formelle de faire des phrases génériques ou vagues.**
+   - Pour chaque tâche ou ouvrage demandé dans le CCTP, tu DOIS croiser dans le même paragraphe :
+     a) **La technique et la norme DTU** exigées au CCTP,
+     b) **La quantité exacte** trouvée dans la DPGF / DQE (`m²`, `m³`, `ml`, `unités`),
+     c) **Le matériel précis** (engins, camions, outillage) et **le personnel dédié** (noms/fonctions, qualifications, CACES, AIPR, habilitations) trouvés dans les documents de l'entreprise.
+   - Exemple attendu : *"Pour la réalisation des 450 m² de cloisons acoustiques (poste 3.2 de la DPGF) conformément au DTU 25.41, nous mobiliserons une équipe de 2 plaquistes qualifiés encadrés par notre chef de chantier [Nom], équipés de lève-plaques et lasers rotatifs de notre parc matériel, à une cadence de 45 m²/jour soit 10 jours ouvrés."*
 
-# 3. MÉTHODOLOGIE ET ORGANISATION DU CHANTIER
-   - Phasage des travaux (avec planning indicatif)
-   - Méthodologie technique détaillée pour chaque lot
-   - Gestion des interfaces entre corps d'état
+4. SECTIONS OBLIGATOIRES À RÉDIGER (intégrées dans l'ordre du RC, ou comme structure principale si pas de plan RC) :
+   # 1. COMPRÉHENSION DES ENJEUX ET CONTRAINTES DU CHANTIER
+      - Adresse exacte, contexte, accès chantier, circulation, riverains, horaires, site occupé ou maintien en activité, synthèse des lots traités.
+   # 2. INSTALLATION DE CHANTIER ET LOGISTIQUE
+      - Base vie / cantonnements, zones de stockage et de déchargement, gestion des flux et approvisionnements, clôtures, signalisation, raccordements provisoires (en croisant CCTP Lot 00 + Plan de masse / PGC).
+   # 3. MOYENS HUMAINS ET MOYENS MATÉRIELS DÉDIÉS AU CHANTIER
+      - Organigramme de chantier nominatif, CV et références de l'encadrement, composition des équipes par tâche, habilitations sécurité (CACES, AIPR, SST, habilitations électriques, travail en hauteur), certifications de l'entreprise (Qualibat, RGE, FNTP).
+      - Liste précise des engins, camions, moyens de levage, échafaudages et outillages affectés au chantier.
+   # 4. MÉTHODOLOGIE D'EXÉCUTION DÉTAILLÉE PHASE PAR PHASE ET AUTOCONTRÔLES QUALITÉ
+      - Détail opérationnel phase par phase et lot par lot selon le(s) CCTP, en citant systématiquement les quantités de la DPGF, les normes DTU applicables, les points d'arrêt et les fiches d'autocontrôle qualité (PAQ).
+   # 5. PROVENANCE DES MATÉRIAUX, FOURNISSEURS ET FICHES TECHNIQUES PRÉVUES AU CCTP
+      - Tableau ou liste structurée des matériaux exigés au CCTP avec leurs caractéristiques techniques, normes/marquages CE/NF, et les fournisseurs habituels de l'entreprise.
+   # 6. PLANNING PRÉVISIONNEL ET CADENCES BASÉS SUR LES QUANTITÉS DE LA DPGF
+      - Justification réaliste des durées et cadences (quantité DPGF ÷ rendement journalier de l'équipe = durée en jours), phasage temporel, chemin critique, jalons et livrables (DOE, DICT, PPSPS).
+   # 7. SÉCURITÉ ET SANTÉ SUR LE CHANTIER (PGC / PPSPS)
+      - Analyse des risques spécifiques au chantier tirés du PGC et de l'étude de sol (travaux en hauteur, fouilles, réseaux, levage, poussières/bruit), gestion de la coactivité, protections collectives et individuelles (EPI), accueil sécurité.
+   # 8. ENVIRONNEMENT ET GESTION DES DÉCHETS (SOSED)
+      - Schéma d'Organisation et de Suivi de l'Élimination des Déchets (SOSED) : estimation et tri par catégorie (DID, DIB, inertes), bennes sur site, bordereaux BSD, nom et distance exacte des déchèteries / centres de valorisation habituels, réduction des nuisances (bruit, poussières, eaux de lavage).
 
-# 4. MOYENS HUMAINS AFFECTÉS AU CHANTIER
-   - Organigramme de l'équipe dédiée
-   - Qualifications du personnel affecté
-   - Plan de formation si nécessaire
-
-# 5. MOYENS MATÉRIELS ET MATÉRIAUX
-   - Liste du matériel et équipements mobilisés
-   - Fiches techniques des matériaux proposés (en utilisant ceux du CCTP)
-   - Justification des choix techniques
-
-# 6. GESTION DE LA QUALITÉ
-   - Plan d'Assurance Qualité (PAQ)
-   - Procédures de contrôle et autocontrôle
-   - Gestion des non-conformités
-
-# 7. SÉCURITÉ ET PRÉVENTION DES RISQUES
-   - Plan Particulier de Sécurité et Protection de la Santé (PPSPS)
-   - Analyse des risques et mesures de prévention
-   - EPI et formations sécurité
-
-# 8. GESTION ENVIRONNEMENTALE
-   - Plan de gestion des déchets (SOGED)
-   - Mesures de réduction de l'impact environnemental
-   - Engagements développement durable
-
-# 9. PLANNING PRÉVISIONNEL
-   - Macro-planning des travaux
-   - Jalons et livrables
-
-CONSIGNES DE RÉDACTION :
-- Sois concret, précis et professionnel.
-- Utilise les matériaux et normes extraits du CCTP (fournis dans le JSON).
-- Personnalise le mémoire avec les infos de l'entreprise SI elles sont fournies.
-- Si les infos ne sont pas fournies, rédige un contenu professionnel et réaliste.
-- NE METS JAMAIS de marqueurs [À COMPLÉTER] ou de crochets vides.
-- Vise un document de 3 000 à 5 000 mots.
-- Le mémoire doit pouvoir être imprimé et soumis tel quel.
+5. RÈGLE STRICTE ANTI-INVENTION :
+   - Tu ne dois **JAMAIS inventer** une donnée propre à l'entreprise (nom de salarié, numéro SIRET, marque d'engin non citée, nom de fournisseur, nom ou distance de déchèterie, référence chantier) ou propre au chantier (adresse, quantité, date, contrainte) si elle n'est présente dans aucun des documents uploadés ni dans le profil entreprise.
+   - Chaque fois qu'une information spécifique à l'entreprise ou au chantier manque dans les pièces fournies, écris explicitement un marqueur bien visible de la forme :
+     `[À COMPLÉTER : préciser ici ...]`
+     (Exemples : `[À COMPLÉTER : préciser ici le nom et l'ancienneté du conducteur de travaux]`, `[À COMPLÉTER : préciser ici le nom et la distance en km de la déchèterie partenaire]`, `[À COMPLÉTER : préciser ici la quantité exacte issue de la DPGF]`).
 """)
 
 
@@ -693,27 +838,55 @@ def call_llm(api_key: str, provider: str, system_prompt: str, user_content: str)
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 5. TÂCHE A : ANALYSE DU CCTP → JSON
+# 5. TÂCHE A : ANALYSE MULTI-DOCUMENTS (RC, CCTP, DPGF, ANNEXES, ENTREPRISE) → JSON
 # ─────────────────────────────────────────────────────────────────────────
 
-def analyse_cctp(api_key: str, provider: str, cctp_text: str) -> dict:
+def _merge_json_values(base_val, new_val):
+    """Fusionne récursivement deux valeurs JSON extraites de différents chunks."""
+    empty_markers = (None, "", "Non spécifié", "Non spécifié dans cette section", [], {})
+    if isinstance(base_val, list) and isinstance(new_val, list):
+        existing = {json.dumps(item, ensure_ascii=False, sort_keys=True) for item in base_val}
+        for item in new_val:
+            serialized = json.dumps(item, ensure_ascii=False, sort_keys=True)
+            if serialized not in existing:
+                base_val.append(item)
+                existing.add(serialized)
+        return base_val
+    if isinstance(base_val, dict) and isinstance(new_val, dict):
+        for k, v in new_val.items():
+            if k not in base_val or base_val[k] in empty_markers:
+                base_val[k] = v
+            else:
+                base_val[k] = _merge_json_values(base_val[k], v)
+        return base_val
+    if base_val in empty_markers and new_val not in empty_markers:
+        return new_val
+    return base_val
+
+
+def analyse_cctp(api_key: str, provider: str, dossier_text: str) -> dict:
     """
-    Envoie le texte du CCTP au LLM pour extraire les informations clés.
-    Gère le chunking si le document est trop long.
+    Envoie le texte combiné des documents uploadés (RC, CCTP, DPGF, Annexes, Entreprise)
+    au LLM pour extraire et croiser toutes les informations clés au format JSON.
+    Gère le chunking si le dossier complet est très volumineux.
     """
-    chunks = chunk_text(cctp_text)
+    chunks = chunk_text(dossier_text)
     all_analyses: list[dict] = []
 
     for i, chunk in enumerate(chunks):
         if len(chunks) > 1:
             user_msg = (
-                f"[Partie {i + 1}/{len(chunks)} du CCTP]\n\n"
+                f"[Partie {i + 1}/{len(chunks)} du Dossier de Consultation et Entreprise]\n\n"
                 f"{chunk}\n\n"
-                f"Analyse cette partie et extrais les informations au format JSON demandé. "
-                f"Si certaines informations ne sont pas dans cette partie, mets 'Non spécifié dans cette section'."
+                f"Analyse cette partie et extrais toutes les informations trouvées (RC, CCTP, DPGF, Annexes, Entreprise) "
+                f"au format JSON demandé. Si certaines informations ne figurent pas dans cette partie, "
+                f"mets 'Non spécifié' ou une liste vide []."
             )
         else:
-            user_msg = f"Voici le CCTP complet à analyser :\n\n{chunk}"
+            user_msg = (
+                "Voici l'ensemble des documents uploadés (RC, CCTP, DPGF/DQE, Annexes Chantier, Documents Entreprise) à analyser et croiser :\n\n"
+                f"{chunk}"
+            )
 
         raw_response = call_llm(api_key, provider, SYSTEM_PROMPT_ANALYSE, user_msg)
 
@@ -737,7 +910,7 @@ def analyse_cctp(api_key: str, provider: str, cctp_text: str) -> dict:
             except json.JSONDecodeError:
                 raise ValueError(
                     "❌ Le LLM n'a pas retourné un JSON valide après deux tentatives. "
-                    "Essayez de réduire la taille du PDF ou changez de fournisseur LLM."
+                    "Essayez de réduire la taille des fichiers ou changez de fournisseur LLM."
                 )
 
     if len(all_analyses) == 1:
@@ -745,24 +918,13 @@ def analyse_cctp(api_key: str, provider: str, cctp_text: str) -> dict:
 
     merged = all_analyses[0]
     for analysis in all_analyses[1:]:
-        for key, value in analysis.items():
-            if isinstance(value, list) and isinstance(merged.get(key), list):
-                existing = [json.dumps(item, ensure_ascii=False) for item in merged[key]]
-                for item in value:
-                    if json.dumps(item, ensure_ascii=False) not in existing:
-                        merged[key].append(item)
-            elif isinstance(value, dict) and isinstance(merged.get(key), dict):
-                for k, v in value.items():
-                    if merged[key].get(k) in (None, "", "Non spécifié", "Non spécifié dans cette section"):
-                        merged[key][k] = v
-            elif merged.get(key) in (None, "", "Non spécifié", "Non spécifié dans cette section"):
-                merged[key] = value
+        merged = _merge_json_values(merged, analysis)
 
     return merged
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 6. TÂCHE B : RÉDACTION DU MÉMOIRE TECHNIQUE
+# 6. TÂCHE B : RÉDACTION DU MÉMOIRE TECHNIQUE CROISÉ
 # ─────────────────────────────────────────────────────────────────────────
 
 def rediger_memoire(
@@ -770,26 +932,47 @@ def rediger_memoire(
     provider: str,
     analyse_json: dict,
     profil_entreprise: Optional[str] = None,
+    extraits_par_categorie: Optional[dict[str, str]] = None,
 ) -> str:
     """
-    Demande au LLM de rédiger le mémoire technique complet
-    à partir de l'analyse JSON du CCTP et du profil entreprise.
+    Demande au LLM de rédiger le mémoire technique complet en croisant :
+    1. L'analyse JSON multi-documents (RC + CCTP + DPGF + Annexes + Docs Entreprise)
+    2. Le profil de l'entreprise enregistré dans l'application (s'il existe)
+    3. Les extraits directs des 5 catégories de documents uploadés
     """
-    user_content = f"## Analyse du CCTP (JSON)\n```json\n{json.dumps(analyse_json, ensure_ascii=False, indent=2)}\n```\n\n"
+    user_content = (
+        "## 1. Analyse structurée et croisée des documents uploadés (JSON)\n"
+        f"```json\n{json.dumps(analyse_json, ensure_ascii=False, indent=2)}\n```\n\n"
+    )
 
-    if profil_entreprise:
-        user_content += f"## Profil de l'entreprise candidate\n{profil_entreprise}\n\n"
+    if profil_entreprise and profil_entreprise.strip():
+        user_content += f"## 2. Profil enregistré de l'entreprise candidate\n{profil_entreprise}\n\n"
     else:
         user_content += (
-            "## Profil de l'entreprise candidate\n"
-            "Aucun profil spécifique fourni. Tu dois rédiger le mémoire technique de manière "
-            "autonome et omnisciente. Déduis le type d'entreprise nécessaire à partir du CCTP "
-            "(corps de métier, taille probable, qualifications requises) et rédige un profil "
-            "d'entreprise crédible et professionnel. Utilise 'Notre entreprise' comme nom. "
-            "Le mémoire doit être complet et prêt à être soumis sans aucune modification.\n\n"
+            "## 2. Profil enregistré de l'entreprise candidate\n"
+            "Aucun profil pré-enregistré dans l'onglet Profil. Utilise exclusivement les informations "
+            "extraites de la catégorie 5 « Documents de l'Entreprise » (organigramme, CV, personnel, "
+            "parc matériel, CACES/AIPR, certifications, fournisseurs, déchèteries). "
+            "Si une information propre à l'entreprise ou au chantier n'est présente dans aucun document uploadé, "
+            "n'invente rien et insère obligatoirement `[À COMPLÉTER : préciser ici ...]`.\n\n"
         )
 
-    user_content += "Rédige maintenant le Mémoire Technique complet en suivant la structure demandée."
+    if extraits_par_categorie:
+        user_content += "## 3. Extraits directs des pièces uploadées par catégorie\n"
+        for cat_label, cat_text in extraits_par_categorie.items():
+            if cat_text and cat_text.strip():
+                # On inclut un extrait généreux par catégorie pour garantir une fidélité maximale aux chiffres et textes
+                extrait_borne = cat_text[:18_000]
+                user_content += f"\n### {cat_label}\n{extrait_borne}\n"
+        user_content += "\n"
+
+    user_content += (
+        "Rédige maintenant le Mémoire Technique complet, personnalisé et ultra-précis en appliquant strictement :\n"
+        "- L'ordre exact des critères de notation du Règlement de Consultation (RC) s'il est fourni (sinon les 8 sections obligatoires),\n"
+        "- La fusion de tous les CCTP (Général Lot 00 + lots techniques),\n"
+        "- Le croisement systématique CCTP (méthode + norme DTU) + DPGF (quantités exactes m², m³, ml, u) + Entreprise (personnel habilité + matériel précis),\n"
+        "- La règle anti-invention : écris `[À COMPLÉTER : préciser ici...]` pour toute donnée spécifique absente des documents."
+    )
 
     return call_llm(api_key, provider, SYSTEM_PROMPT_REDACTION, user_content)
 
@@ -840,8 +1023,14 @@ def generate_docx(memoire_text: str, analyse_json: dict, entreprise: dict) -> io
 
     doc.add_paragraph()
 
-    # Infos entreprise sur la page de garde
+    # Infos entreprise sur la page de garde (profil ou extrait des documents entreprise)
+    res_ent = analyse_json.get("ressources_entreprise_extraites", {}) if isinstance(analyse_json.get("ressources_entreprise_extraites"), dict) else {}
     nom_entreprise = entreprise.get("nom", "").strip()
+    if not nom_entreprise:
+        extracted_nom = str(res_ent.get("nom_entreprise", "")).strip()
+        if extracted_nom and extracted_nom not in ("Non spécifié", "Non spécifié dans cette section"):
+            nom_entreprise = extracted_nom
+
     if nom_entreprise:
         p_ent = doc.add_paragraph()
         p_ent.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -867,6 +1056,8 @@ def generate_docx(memoire_text: str, analyse_json: dict, entreprise: dict) -> io
             certifs.append(entreprise["certifications"].strip())
         if entreprise.get("qualifications", "").strip():
             certifs.append(entreprise["qualifications"].strip())
+        if not certifs and isinstance(res_ent.get("certifications"), list) and res_ent["certifications"]:
+            certifs.extend([str(c) for c in res_ent["certifications"][:5]])
         if certifs:
             p_certif = doc.add_paragraph()
             p_certif.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -890,6 +1081,22 @@ def generate_docx(memoire_text: str, analyse_json: dict, entreprise: dict) -> io
     )
     doc.add_page_break()
 
+    def _add_formatted_runs(paragraph, text_str: str):
+        """Ajoute le texte dans un paragraphe Word en mettant en gras **...** et en évidence [À COMPLÉTER...]."""
+        tokens = re.split(r"(\[À COMPLÉTER[^\]]*\]|\*\*.*?\*\*)", text_str)
+        for tok in tokens:
+            if not tok:
+                continue
+            if tok.startswith("[À COMPLÉTER") and tok.endswith("]"):
+                r = paragraph.add_run(tok)
+                r.bold = True
+                r.font.color.rgb = RGBColor(217, 83, 79)
+            elif tok.startswith("**") and tok.endswith("**"):
+                r = paragraph.add_run(tok[2:-2])
+                r.bold = True
+            else:
+                paragraph.add_run(tok)
+
     # ── Contenu du mémoire ──────────────────────────────────────────────
     lines = memoire_text.split("\n")
     for line in lines:
@@ -908,32 +1115,14 @@ def generate_docx(memoire_text: str, analyse_json: dict, entreprise: dict) -> io
         elif stripped.startswith("- ") or stripped.startswith("* "):
             bullet_text = stripped[2:]
             p = doc.add_paragraph(style="List Bullet")
-            parts = re.split(r"(\*\*.*?\*\*)", bullet_text)
-            for part in parts:
-                if part.startswith("**") and part.endswith("**"):
-                    run = p.add_run(part[2:-2])
-                    run.bold = True
-                else:
-                    p.add_run(part)
+            _add_formatted_runs(p, bullet_text)
         elif re.match(r"^\d+\.\s", stripped):
             text = re.sub(r"^\d+\.\s", "", stripped)
             p = doc.add_paragraph(style="List Number")
-            parts = re.split(r"(\*\*.*?\*\*)", text)
-            for part in parts:
-                if part.startswith("**") and part.endswith("**"):
-                    run = p.add_run(part[2:-2])
-                    run.bold = True
-                else:
-                    p.add_run(part)
+            _add_formatted_runs(p, text)
         else:
             p = doc.add_paragraph()
-            parts = re.split(r"(\*\*.*?\*\*)", stripped)
-            for part in parts:
-                if part.startswith("**") and part.endswith("**"):
-                    run = p.add_run(part[2:-2])
-                    run.bold = True
-                else:
-                    p.add_run(part)
+            _add_formatted_runs(p, stripped)
 
     # ── Sauvegarde en mémoire ───────────────────────────────────────────
     buffer = io.BytesIO()
@@ -952,8 +1141,12 @@ def generate_pdf(memoire_text: str, analyse_json: dict, entreprise: dict) -> io.
     bold_font = os.path.join(font_dir, "CustomFont-Bold.ttf")
     italic_font = os.path.join(font_dir, "CustomFont-Italic.ttf")
 
-    nom_entreprise = entreprise.get("nom", "").strip() or "MarketBuilding"
-    nom_projet = analyse_json.get("nom_projet", "Projet BTP").strip()
+    res_ent = analyse_json.get("ressources_entreprise_extraites", {}) if isinstance(analyse_json.get("ressources_entreprise_extraites"), dict) else {}
+    extracted_nom = str(res_ent.get("nom_entreprise", "")).strip()
+    if extracted_nom in ("Non spécifié", "Non spécifié dans cette section"):
+        extracted_nom = ""
+    nom_entreprise = entreprise.get("nom", "").strip() or extracted_nom or "MarketBuilding"
+    nom_projet = str(analyse_json.get("nom_projet", "Projet BTP")).strip()
 
     class ExecutiveBTPPDF(FPDF):
         def __init__(self):
@@ -1306,27 +1499,32 @@ elif page == "Profil":
 # PAGE : 📄 GÉNÉRER UN MÉMOIRE
 # ─────────────────────────────────────────────────────────────────────────
 elif page == "Génération":
-    st.title("Générateur de Mémoires Techniques")
+    st.title("Générateur de Mémoires Techniques BTP (Multi-Documents Croisés)")
 
     nom_ent = config["entreprise"].get("nom", "").strip()
     if nom_ent:
-        st.markdown(f"Bienvenue **{nom_ent}** · Uploadez votre CCTP et générez votre mémoire technique en un clic.")
+        st.markdown(
+            f"Bienvenue **{nom_ent}** · Uploadez les pièces de votre DCE (**RC, CCTP, DPGF, Annexes**) et les **Documents de votre Entreprise** pour générer un mémoire technique sur-mesure."
+        )
     else:
-        st.markdown("Uploadez votre **CCTP** et le système générera un **Mémoire Technique** complet et prêt à l'emploi.")
+        st.markdown(
+            "Uploadez simultanément vos pièces de marché (**RC, CCTP, DPGF/DQE, Annexes**) et vos **Documents Entreprise** (PDF, Word ou Excel). "
+            "L'IA les croise automatiquement pour rédiger un **Mémoire Technique** complet et personnalisé."
+        )
 
     if not config["api_key"].strip():
         st.warning("⚠️ **Clé d'authentification système manquante.** Allez dans **Paramètres** pour la configurer.")
 
     _feat_main = vt.featured_video()
     if _feat_main:
-        with st.expander("🎬 Tutoriel vidéo : Comment générer et télécharger votre Mémoire Technique", expanded=True):
+        with st.expander("🎬 Tutoriel vidéo : Comment générer et télécharger votre Mémoire Technique", expanded=False):
             st.video(str(_feat_main), autoplay=True, loop=True, muted=True)
             st.markdown(
                 """
                 <div style='display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:10px;'>
                     <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #3B82F6; border-radius:10px; padding:12px;'>
-                        <div style='color:#3B82F6; font-weight:700; font-size:13px;'>1. Importer le CCTP (Début de la vidéo)</div>
-                        <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Cliquez sur <b>Upload</b>, sélectionnez votre <b>CCTP (.pdf)</b> puis lancez <b>« 🚀 Générer le Mémoire Technique »</b>.</div>
+                        <div style='color:#3B82F6; font-weight:700; font-size:13px;'>1. Importer vos documents (RC, CCTP, DPGF…)</div>
+                        <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Déposez vos fichiers (PDF, Word, Excel) dans les 5 zones dédiées puis cliquez sur <b>« 🚀 Générer le Mémoire Technique »</b>.</div>
                     </div>
                     <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #F59E0B; border-radius:10px; padding:12px;'>
                         <div style='color:#F59E0B; font-weight:700; font-size:13px;'>2. Boutons de téléchargement PDF & Word</div>
@@ -1343,114 +1541,243 @@ elif page == "Génération":
 
     st.divider()
 
-    st.subheader("📄 CCTP de l'appel d'offres (Simple ou Multi-CCTP)")
-    cctp_files = st.file_uploader(
-        "Uploadez un ou plusieurs CCTP (PDF) pour générer plusieurs mémoires en une seule fois",
-        type=["pdf"],
-        key="cctp",
-        accept_multiple_files=True,
-        help="Glissez-déposez un seul CCTP ou plusieurs CCTP simultanément pour les traiter en lot.",
-    )
+    ALLOWED_DOC_TYPES = ["pdf", "docx", "xlsx", "xls", "csv"]
 
-    nb_files = len(cctp_files) if cctp_files else 0
-    if nb_files > 1:
-        st.info(f"📚 **{nb_files} CCTP sélectionnés** : cliquez sur le bouton ci-dessous pour générer les {nb_files} mémoires techniques à la suite automatiquement.")
+    mode_tab1, mode_tab2 = st.tabs([
+        "🧩 Dossier Complet Croisé (5 catégories : RC + CCTP + DPGF + Annexes + Entreprise)",
+        "📚 Génération en Lot (Plusieurs marchés distincts d'un coup)",
+    ])
 
-    st.divider()
+    with mode_tab1:
+        st.markdown(
+            """
+            <div style='background:#12151b; border:1px solid #262b36; border-left:4px solid #3B82F6; border-radius:10px; padding:14px 16px; margin-bottom:18px;'>
+                <div style='color:#f8fafc; font-weight:700; font-size:14px; margin-bottom:4px;'>
+                    🔗 Croisement intelligent des 5 catégories de documents (PDF, Word .docx, Excel .xlsx/.xls/.csv)
+                </div>
+                <div style='color:#94a3b8; font-size:13px; line-height:1.5;'>
+                    • <b>Ordre exact du RC</b> : sommaire calqué sur les critères de la Valeur Technique.<br>
+                    • <b>Fusion multi-CCTP</b> : CCTP Général (Lot 00) combiné aux CCTP des lots techniques.<br>
+                    • <b>Croisement CCTP × DPGF × Entreprise</b> : chaque tâche cite la norme DTU, la quantité exacte de la DPGF et le matériel/personnel dédié.<br>
+                    • <b>Zéro invention</b> : toute donnée absente des pièces est signalée par <code>[À COMPLÉTER : préciser ici...]</code>.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    btn_label = (
-        f"🚀 Générer les {nb_files} Mémoires Techniques"
-        if nb_files > 1
-        else "🚀 Générer le Mémoire Technique"
-    )
-    generate_btn = st.button(
-        btn_label,
-        type="primary",
-        use_container_width=True,
-    )
+        # ── ZONE 1 & ZONE 2 ─────────────────────────────────────────────────
+        col_z1, col_z2 = st.columns(2)
+        with col_z1:
+            st.markdown("#### 1️⃣ Le Règlement de Consultation (RC) *(1 fichier)*")
+            st.caption(
+                "🔍 **Ce que l'outil y cherche :** Critères et sous-critères de notation de la *Valeur Technique*, barème de points, plan imposé et nombre de pages maximum."
+            )
+            rc_file = st.file_uploader(
+                "Uploader le Règlement de Consultation (RC)",
+                type=ALLOWED_DOC_TYPES,
+                key="upload_rc",
+                accept_multiple_files=False,
+                help="Format accepté : PDF, Word (.docx) ou Excel (.xlsx, .xls, .csv) — 1 fichier.",
+            )
 
-    if generate_btn:
-        api_key = config["api_key"].strip()
-        llm_provider = config["llm_provider"]
+        with col_z2:
+            st.markdown("#### 2️⃣ Les CCTP *(Upload multiple : Lot 00 + Lots techniques)*")
+            st.caption(
+                "🔍 **Ce que l'outil y cherche :** Adresse et contraintes du chantier (accès, horaires, site occupé), matériaux demandés, normes (DTU), méthodes de pose et gestion des déchets (SOSED)."
+            )
+            cctp_multi_files = st.file_uploader(
+                "Uploader le CCTP Général (Lot 00) et/ou un ou plusieurs CCTP de lots techniques",
+                type=ALLOWED_DOC_TYPES,
+                key="upload_cctp_multi",
+                accept_multiple_files=True,
+                help="Vous pouvez déposer simultanément le CCTP Général (Lot 00) et plusieurs CCTP de lots (Gros Œuvre, VRD, Électricité...).",
+            )
 
-        if not api_key:
-            st.error("❌ Clé d'authentification système manquante. Allez dans **Paramètres** pour la configurer.")
-            st.stop()
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-        if not cctp_files:
-            st.error("❌ Veuillez uploader au moins un fichier CCTP (PDF).")
-            st.stop()
+        # ── ZONE 3 & ZONE 4 ─────────────────────────────────────────────────
+        col_z3, col_z4 = st.columns(2)
+        with col_z3:
+            st.markdown("#### 3️⃣ La DPGF / DQE (Devis quantitatif) *(1 ou plusieurs fichiers)*")
+            st.caption(
+                "🔍 **Ce que l'outil y cherche :** Les quantités exactes des travaux (`m²`, `m³`, `ml`, `unités`) pour dimensionner le planning, les cadences et les équipes."
+            )
+            dpgf_files = st.file_uploader(
+                "Uploader la DPGF / le DQE (Excel, PDF ou Word)",
+                type=ALLOWED_DOC_TYPES,
+                key="upload_dpgf",
+                accept_multiple_files=True,
+                help="Déposez un ou plusieurs fichiers DPGF / DQE (tableaux Excel .xlsx/.xls/.csv, PDF ou Word).",
+            )
 
-        profil_text = build_profil_text(config["entreprise"])
-        if profil_text:
-            st.info(f"🏢 Profil **{config['entreprise'].get('nom', '')}** utilisé automatiquement.")
-        else:
-            st.info("⚙️ **Mode autonome** : le système générera un mémoire complet en se basant uniquement sur chaque CCTP.")
+        with col_z4:
+            st.markdown("#### 4️⃣ Les Annexes Chantier *(Optionnel — Upload multiple)*")
+            st.caption(
+                "🔍 **Ce que l'outil y cherche :** PGC Sécurité, Plan de masse, Étude de sol → risques sécurité spécifiques au chantier, coactivité et installation de chantier (base vie, stockage)."
+            )
+            annexes_files = st.file_uploader(
+                "Uploader les Annexes Chantier (PGC Sécurité, Plan de masse, Étude de sol…)",
+                type=ALLOWED_DOC_TYPES,
+                key="upload_annexes",
+                accept_multiple_files=True,
+                help="Optionnel : ajoutez le PGC, le plan d'installation de chantier, l'étude géotechnique, etc.",
+            )
 
-        batch_results = []
-        os.makedirs("archives", exist_ok=True)
-        batch_progress = st.progress(0.0, text=f"Démarrage du traitement (0/{nb_files})…") if nb_files > 1 else None
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-        for idx, cctp_file in enumerate(cctp_files, start=1):
-            prefix = f"[{idx}/{nb_files}] {cctp_file.name} — " if nb_files > 1 else ""
-            if batch_progress:
-                batch_progress.progress((idx - 1) / nb_files, text=f"Traitement du dossier {idx}/{nb_files} : {cctp_file.name}…")
+        # ── ZONE 5 : DOCUMENTS DE L'ENTREPRISE ──────────────────────────────
+        st.markdown(
+            "#### 5️⃣ Les Documents de l'Entreprise *(Upload multiple : Ancien mémoire, personnel, parc matériel, certifications)*"
+        )
+        st.caption(
+            "🔍 **Ce que l'outil y cherche :** Organigramme, CV de l'encadrement, liste des engins/camions/outils, diplômes sécurité (CACES, AIPR, habilitations), certifications (Qualibat, RGE, FNTP), nom des fournisseurs et déchèteries habituels."
+        )
+        entreprise_files = st.file_uploader(
+            "Uploader les documents de votre entreprise (ancien mémoire technique, liste personnel, parc matériel, attestations Qualibat/RGE/CACES…)",
+            type=ALLOWED_DOC_TYPES,
+            key="upload_entreprise_docs",
+            accept_multiple_files=True,
+            help="Déposez tous vos justificatifs et documents internes (PDF, Word ou Excel). Ils seront croisés avec le CCTP et la DPGF.",
+        )
 
-            # ── Extraction du PDF ───────────────────────────────────────────
-            with st.status(f"📖 {prefix}Extraction du texte du CCTP…", expanded=(nb_files == 1)) as status:
+        # Récapitulatif visuel des pièces chargées
+        nb_rc = 1 if rc_file else 0
+        nb_cctp_m = len(cctp_multi_files) if cctp_multi_files else 0
+        nb_dpgf = len(dpgf_files) if dpgf_files else 0
+        nb_ann = len(annexes_files) if annexes_files else 0
+        nb_ent_docs = len(entreprise_files) if entreprise_files else 0
+        total_uploaded = nb_rc + nb_cctp_m + nb_dpgf + nb_ann + nb_ent_docs
+
+        if total_uploaded > 0:
+            st.info(
+                f"📂 **{total_uploaded} document(s) prêt(s) à être croisé(s)** : "
+                f"**RC** ({nb_rc}) · **CCTP** ({nb_cctp_m}) · **DPGF/DQE** ({nb_dpgf}) · "
+                f"**Annexes Chantier** ({nb_ann}) · **Documents Entreprise** ({nb_ent_docs})"
+            )
+
+        generate_crossed_btn = st.button(
+            "🚀 Croiser les documents & Générer le Mémoire Technique Complet",
+            type="primary",
+            use_container_width=True,
+            key="btn_generate_crossed",
+        )
+
+        if generate_crossed_btn:
+            api_key = config["api_key"].strip()
+            llm_provider = config["llm_provider"]
+
+            if not api_key:
+                st.error("❌ Clé d'authentification système manquante. Allez dans **Paramètres** pour la configurer.")
+                st.stop()
+
+            if not cctp_multi_files and not rc_file and not dpgf_files:
+                st.error("❌ Veuillez uploader au moins un **CCTP** (ou un RC / DPGF) pour lancer la génération.")
+                st.stop()
+
+            profil_text = build_profil_text(config["entreprise"])
+            if profil_text:
+                st.info(f"🏢 Profil enregistré **{config['entreprise'].get('nom', '')}** combiné aux documents uploadés.")
+            elif nb_ent_docs > 0:
+                st.info(f"🏢 **{nb_ent_docs} document(s) d'entreprise** utilisé(s) pour personnaliser les moyens humains, matériels et certifications.")
+            else:
+                st.warning(
+                    "ℹ️ Aucun profil ni document d'entreprise fourni : conformément à la règle anti-invention, "
+                    "les informations propres à votre entreprise seront indiquées par `[À COMPLÉTER : préciser ici...]`."
+                )
+
+            categories_input = [
+                ("1. RÈGLEMENT DE CONSULTATION (RC)", [rc_file] if rc_file else []),
+                ("2. CAHIERS DES CLAUSES TECHNIQUES PARTICULIÈRES (CCTP GÉNÉRAL + LOTS)", cctp_multi_files or []),
+                ("3. DPGF / DQE (QUANTITÉS DU MARCHÉ)", dpgf_files or []),
+                ("4. ANNEXES CHANTIER (PGC SÉCURITÉ, PLAN DE MASSE, ÉTUDE DE SOL)", annexes_files or []),
+                ("5. DOCUMENTS DE L'ENTREPRISE (ANCIEN MÉMOIRE, PERSONNEL, MATÉRIEL, CERTIFICATIONS)", entreprise_files or []),
+            ]
+
+            combined_sections: list[str] = []
+            extraits_par_categorie: dict[str, str] = {}
+            source_filenames: list[str] = []
+
+            with st.status("📖 Extraction multi-formats (PDF, Word, Excel) des 5 catégories de documents…", expanded=True) as status:
                 try:
-                    st.write(f"Lecture de **{cctp_file.name}**…")
-                    cctp_text = extract_text_from_pdf(cctp_file)
-                    nb_pages_cctp = cctp_text.count("--- Page ")
-                    nb_chars_cctp = len(cctp_text)
-                    st.write(f"✅ CCTP : {nb_pages_cctp} pages extraites ({nb_chars_cctp:,} caractères)")
-                    status.update(label=f"✅ {prefix}Extraction terminée", state="complete")
+                    for cat_title, file_list in categories_input:
+                        if not file_list:
+                            st.write(f"⚪ **{cat_title}** : *Aucun fichier déposé*")
+                            continue
+                        cat_text, cat_logs = extract_category_documents(file_list, cat_title)
+                        for f in file_list:
+                            if f is not None:
+                                source_filenames.append(f.name)
+                        for log_line in cat_logs:
+                            st.write(f"✅ {cat_title} → {log_line}")
+                        if cat_text:
+                            combined_sections.append(cat_text)
+                            extraits_par_categorie[cat_title] = cat_text
+
+                    if not combined_sections:
+                        raise ValueError("Aucun texte exploitable n'a pu être extrait des documents fournis.")
+
+                    full_dossier_text = "\n\n".join(combined_sections)
+                    status.update(
+                        label=f"✅ Extraction terminée ({len(source_filenames)} fichier(s), {len(full_dossier_text):,} caractères extraits)",
+                        state="complete",
+                    )
                 except ValueError as e:
-                    status.update(label=f"❌ {prefix}Erreur d'extraction", state="error")
-                    st.error(f"{cctp_file.name} : {e}")
-                    continue
+                    status.update(label="❌ Erreur lors de l'extraction des documents", state="error")
+                    st.error(str(e))
+                    st.stop()
 
-            # ── Tâche A : Analyse du CCTP ──────────────────────────────────
-            with st.status(f"🔍 {prefix}Analyse sémantique du CCTP en cours…", expanded=(nb_files == 1)) as status:
+            # ── Tâche A : Analyse croisée ───────────────────────────────────
+            with st.status("🔍 Analyse et croisement sémantique (RC × CCTP × DPGF × Annexes × Entreprise)…", expanded=True) as status:
                 try:
-                    nb_chunks = len(chunk_text(cctp_text))
+                    nb_chunks = len(chunk_text(full_dossier_text))
                     if nb_chunks > 1:
-                        st.write(f"Document volumineux → découpage en {nb_chunks} parties pour l'analyse.")
-                    st.write("Extraction algorithmique des exigences techniques…")
-                    analyse = analyse_cctp(api_key, llm_provider, cctp_text)
-                    st.write("✅ Analyse terminée.")
-                    status.update(label=f"✅ {prefix}Analyse du CCTP terminée", state="complete")
+                        st.write(f"Dossier complet volumineux → analyse structurée en {nb_chunks} segments.")
+                    st.write("Extraction des critères du RC, des prescriptions CCTP, des quantités DPGF, du PGC et des moyens de l'entreprise…")
+                    analyse = analyse_cctp(api_key, llm_provider, full_dossier_text)
+                    st.write("✅ Croisement JSON terminé.")
+                    status.update(label="✅ Analyse croisée des documents terminée", state="complete")
                 except ValueError as e:
-                    status.update(label=f"❌ {prefix}Erreur d'analyse", state="error")
-                    st.error(f"{cctp_file.name} : {e}")
-                    continue
+                    status.update(label="❌ Erreur d'analyse", state="error")
+                    st.error(str(e))
+                    st.stop()
 
-            # ── Tâche B : Rédaction du Mémoire ──────────────────────────────
-            with st.status(f"✍️ {prefix}Rédaction du Mémoire Technique…", expanded=(nb_files == 1)) as status:
+            # ── Tâche B : Rédaction du Mémoire Technique ────────────────────
+            with st.status("✍️ Rédaction du Mémoire Technique sur-mesure (ordre du RC, quantités DPGF, règle anti-invention)…", expanded=True) as status:
                 try:
-                    st.write("Compilation et formatage du document final personnalisé…")
-                    memoire_md = rediger_memoire(api_key, llm_provider, analyse, profil_text)
-                    st.write("✅ Rédaction terminée.")
-                    status.update(label=f"✅ {prefix}Mémoire Technique rédigé", state="complete")
+                    st.write("Rédaction détaillée phase par phase en croisant CCTP + DPGF + Moyens Entreprise…")
+                    memoire_md = rediger_memoire(
+                        api_key,
+                        llm_provider,
+                        analyse,
+                        profil_text,
+                        extraits_par_categorie=extraits_par_categorie,
+                    )
+                    st.write("✅ Rédaction du Mémoire Technique terminée.")
+                    status.update(label="✅ Mémoire Technique rédigé avec succès", state="complete")
                 except ValueError as e:
-                    status.update(label=f"❌ {prefix}Erreur de rédaction", state="error")
-                    st.error(f"{cctp_file.name} : {e}")
-                    continue
+                    status.update(label="❌ Erreur de rédaction", state="error")
+                    st.error(str(e))
+                    st.stop()
 
-            # ── Génération des fichiers Word et PDF ────────────────────────
-            with st.status(f"📄 {prefix}Compilation PDF & Word…", expanded=(nb_files == 1)) as status:
+            # ── Compilation Word et PDF ─────────────────────────────────────
+            with st.status("📄 Génération des livrables PDF & Word (.docx)…", expanded=True) as status:
                 try:
                     docx_buffer = generate_docx(memoire_md, analyse, config["entreprise"])
                     pdf_buffer = generate_pdf(memoire_md, analyse, config["entreprise"])
-                    status.update(label=f"✅ {prefix}Document généré avec succès", state="complete")
+                    status.update(label="✅ Fichiers PDF et Word générés avec succès", state="complete")
                 except Exception as e:
-                    status.update(label=f"❌ {prefix}Erreur de formatage", state="error")
-                    st.error(f"Erreur lors de la génération du document ({cctp_file.name}) : {e}")
-                    continue
+                    status.update(label="❌ Erreur de formatage PDF/Word", state="error")
+                    st.error(f"Erreur lors de la génération des fichiers : {e}")
+                    st.stop()
 
-            nom_projet = analyse.get("nom_projet", "") or Path(cctp_file.name).stem
-            nom_fichier = re.sub(r"[^\w\s-]", "", nom_projet).strip().replace(" ", "_")[:60] or f"Memoire_{idx}"
+            default_stem = Path(source_filenames[0]).stem if source_filenames else "Dossier_BTP"
+            nom_projet = str(analyse.get("nom_projet", "")).strip()
+            if not nom_projet or nom_projet in ("Non spécifié", "Non spécifié dans cette section"):
+                nom_projet = default_stem
+            nom_fichier = re.sub(r"[^\w\s-]", "", nom_projet).strip().replace(" ", "_")[:60] or "Memoire_BTP"
 
+            os.makedirs("archives", exist_ok=True)
             date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
             pdf_bytes = pdf_buffer.getvalue()
             docx_bytes = docx_buffer.getvalue()
@@ -1460,21 +1787,139 @@ elif page == "Génération":
             with open(f"archives/Memoire_{nom_fichier}_{date_str}.docx", "wb") as f:
                 f.write(docx_bytes)
 
-            batch_results.append({
-                "source_name": cctp_file.name,
+            st.session_state["generated_results"] = [{
+                "source_name": ", ".join(source_filenames),
                 "nom_projet": nom_projet,
                 "nom_fichier": nom_fichier,
                 "analyse": analyse,
                 "memoire_md": memoire_md,
                 "pdf_bytes": pdf_bytes,
                 "docx_bytes": docx_bytes,
-            })
+            }]
 
-        if batch_progress:
-            batch_progress.progress(1.0, text=f"✅ {len(batch_results)}/{nb_files} Mémoire(s) Technique(s) généré(s) avec succès !")
+    with mode_tab2:
+        st.subheader("📚 Générer plusieurs Mémoires Techniques en lot (1 fichier CCTP = 1 Mémoire)")
+        st.caption(
+            "Utilisez ce mode si vous souhaitez traiter plusieurs appels d'offres distincts à la suite en quelques clics."
+        )
+        cctp_files = st.file_uploader(
+            "Uploadez plusieurs CCTP (PDF, Word ou Excel) pour générer un mémoire technique par fichier",
+            type=ALLOWED_DOC_TYPES,
+            key="cctp_batch",
+            accept_multiple_files=True,
+            help="Glissez-déposez plusieurs CCTP simultanément pour les traiter en lot.",
+        )
 
-        if batch_results:
-            st.session_state["generated_results"] = batch_results
+        nb_files = len(cctp_files) if cctp_files else 0
+        if nb_files > 1:
+            st.info(f"📚 **{nb_files} fichiers sélectionnés** : cliquez sur le bouton ci-dessous pour générer les {nb_files} mémoires techniques à la suite automatiquement.")
+
+        btn_label = (
+            f"🚀 Générer les {nb_files} Mémoires Techniques en lot"
+            if nb_files > 1
+            else "🚀 Générer le Mémoire Technique"
+        )
+        generate_btn = st.button(
+            btn_label,
+            type="primary",
+            use_container_width=True,
+            key="btn_generate_batch",
+        )
+
+        if generate_btn:
+            api_key = config["api_key"].strip()
+            llm_provider = config["llm_provider"]
+
+            if not api_key:
+                st.error("❌ Clé d'authentification système manquante. Allez dans **Paramètres** pour la configurer.")
+                st.stop()
+
+            if not cctp_files:
+                st.error("❌ Veuillez uploader au moins un fichier CCTP.")
+                st.stop()
+
+            profil_text = build_profil_text(config["entreprise"])
+            batch_results = []
+            os.makedirs("archives", exist_ok=True)
+            batch_progress = st.progress(0.0, text=f"Démarrage du traitement (0/{nb_files})…") if nb_files > 1 else None
+
+            for idx, cctp_file in enumerate(cctp_files, start=1):
+                prefix = f"[{idx}/{nb_files}] {cctp_file.name} — " if nb_files > 1 else ""
+                if batch_progress:
+                    batch_progress.progress((idx - 1) / nb_files, text=f"Traitement du dossier {idx}/{nb_files} : {cctp_file.name}…")
+
+                with st.status(f"📖 {prefix}Extraction du texte…", expanded=(nb_files == 1)) as status:
+                    try:
+                        cctp_text = extract_text_from_document(cctp_file)
+                        status.update(label=f"✅ {prefix}Extraction terminée ({len(cctp_text):,} caractères)", state="complete")
+                    except ValueError as e:
+                        status.update(label=f"❌ {prefix}Erreur d'extraction", state="error")
+                        st.error(f"{cctp_file.name} : {e}")
+                        continue
+
+                with st.status(f"🔍 {prefix}Analyse sémantique en cours…", expanded=(nb_files == 1)) as status:
+                    try:
+                        analyse = analyse_cctp(api_key, llm_provider, cctp_text)
+                        status.update(label=f"✅ {prefix}Analyse terminée", state="complete")
+                    except ValueError as e:
+                        status.update(label=f"❌ {prefix}Erreur d'analyse", state="error")
+                        st.error(f"{cctp_file.name} : {e}")
+                        continue
+
+                with st.status(f"✍️ {prefix}Rédaction du Mémoire Technique…", expanded=(nb_files == 1)) as status:
+                    try:
+                        memoire_md = rediger_memoire(
+                            api_key,
+                            llm_provider,
+                            analyse,
+                            profil_text,
+                            extraits_par_categorie={"CCTP": cctp_text},
+                        )
+                        status.update(label=f"✅ {prefix}Mémoire Technique rédigé", state="complete")
+                    except ValueError as e:
+                        status.update(label=f"❌ {prefix}Erreur de rédaction", state="error")
+                        st.error(f"{cctp_file.name} : {e}")
+                        continue
+
+                with st.status(f"📄 {prefix}Compilation PDF & Word…", expanded=(nb_files == 1)) as status:
+                    try:
+                        docx_buffer = generate_docx(memoire_md, analyse, config["entreprise"])
+                        pdf_buffer = generate_pdf(memoire_md, analyse, config["entreprise"])
+                        status.update(label=f"✅ {prefix}Document généré avec succès", state="complete")
+                    except Exception as e:
+                        status.update(label=f"❌ {prefix}Erreur de formatage", state="error")
+                        st.error(f"Erreur lors de la génération du document ({cctp_file.name}) : {e}")
+                        continue
+
+                nom_projet = str(analyse.get("nom_projet", "")).strip()
+                if not nom_projet or nom_projet in ("Non spécifié", "Non spécifié dans cette section"):
+                    nom_projet = Path(cctp_file.name).stem
+                nom_fichier = re.sub(r"[^\w\s-]", "", nom_projet).strip().replace(" ", "_")[:60] or f"Memoire_{idx}"
+
+                date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                pdf_bytes = pdf_buffer.getvalue()
+                docx_bytes = docx_buffer.getvalue()
+
+                with open(f"archives/Memoire_{nom_fichier}_{date_str}.pdf", "wb") as f:
+                    f.write(pdf_bytes)
+                with open(f"archives/Memoire_{nom_fichier}_{date_str}.docx", "wb") as f:
+                    f.write(docx_bytes)
+
+                batch_results.append({
+                    "source_name": cctp_file.name,
+                    "nom_projet": nom_projet,
+                    "nom_fichier": nom_fichier,
+                    "analyse": analyse,
+                    "memoire_md": memoire_md,
+                    "pdf_bytes": pdf_bytes,
+                    "docx_bytes": docx_bytes,
+                })
+
+            if batch_progress:
+                batch_progress.progress(1.0, text=f"✅ {len(batch_results)}/{nb_files} Mémoire(s) Technique(s) généré(s) avec succès !")
+
+            if batch_results:
+                st.session_state["generated_results"] = batch_results
 
     # ── Affichage des résultats générés (persistant au clic de téléchargement) ──
     results = st.session_state.get("generated_results", [])
@@ -1482,9 +1927,24 @@ elif page == "Génération":
         st.divider()
         if len(results) == 1:
             res = results[0]
-            st.success("🎉 Document généré avec succès.")
+            st.success(f"🎉 **Mémoire Technique généré avec succès** (Pièces croisées : `{res.get('source_name', '')}`).")
 
-            with st.expander("📊 Voir l'analyse extraite du CCTP", expanded=False):
+            # Détection des balises anti-invention [À COMPLÉTER : ...]
+            marqueurs_a_completer = re.findall(r"\[À COMPLÉTER[^\]]*\]", res["memoire_md"])
+            if marqueurs_a_completer:
+                uniques_marqueurs = list(dict.fromkeys(marqueurs_a_completer))
+                with st.expander(
+                    f"⚠️ {len(uniques_marqueurs)} information(s) à compléter identifiée(s) (Règle Anti-Invention)",
+                    expanded=True,
+                ):
+                    st.caption(
+                        "Ces éléments n'étaient présents dans aucun des documents uploadés. "
+                        "Ils apparaissent en rouge dans le fichier Word (.docx) pour que vous puissiez les compléter facilement :"
+                    )
+                    for m in uniques_marqueurs:
+                        st.markdown(f"- `{m}`")
+
+            with st.expander("📊 Voir l'analyse croisée extraite des documents (RC, CCTP, DPGF, PGC, Entreprise)", expanded=False):
                 st.json(res["analyse"])
 
             with st.expander("📝 Aperçu du Mémoire Technique (Markdown)", expanded=True):
@@ -1511,7 +1971,7 @@ elif page == "Génération":
                     key="dl_single_docx",
                 )
 
-            st.caption("💡 Le format Word vous permet d'ajouter le logo de l'entreprise ou des photos de chantier avant envoi.")
+            st.caption("💡 Le format Word (.docx) met en évidence en rouge gras les balises `[À COMPLÉTER : ...]` et vous permet d'ajouter votre logo ou vos photos.")
 
             st.subheader("👁️ Aperçu du document PDF")
             b64_pdf = base64.b64encode(res["pdf_bytes"]).decode("utf-8")
