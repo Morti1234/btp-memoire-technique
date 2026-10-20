@@ -96,6 +96,7 @@ def load_config() -> dict:
     config = {
         "api_key": "",
         "llm_provider": "OpenAI (GPT-4o)",
+        "dark_mode": True,
         "entreprise": dict(DEFAULT_ENTREPRISE),
     }
 
@@ -118,6 +119,8 @@ def load_config() -> dict:
                 config["api_key"] = saved.get("api_key", "")
             if config["llm_provider"] == "OpenAI (GPT-4o)" and "llm_provider" in saved:
                 config["llm_provider"] = saved["llm_provider"]
+            if "dark_mode" in saved and isinstance(saved["dark_mode"], bool):
+                config["dark_mode"] = saved["dark_mode"]
             for key in config["entreprise"]:
                 if not config["entreprise"][key]:
                     config["entreprise"][key] = saved.get("entreprise", {}).get(key, "")
@@ -188,13 +191,450 @@ def build_profil_text(entreprise: dict) -> Optional[str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 1. CONFIGURATION DE LA PAGE STREAMLIT
+# 1. CONFIGURATION DE LA PAGE STREAMLIT & THÈME (MODE SOMBRE ON/OFF)
 # ─────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="MarketBuilding Pro - Mémoire Technique",
+    page_title="MarketBuilding Pro - Mémoire Technique BTP",
     page_icon="🏗️",
     layout="wide",
 )
+
+config = load_config()
+if "dark_mode" not in st.session_state:
+    st.session_state["dark_mode"] = bool(config.get("dark_mode", True))
+
+
+def get_marketbuilding_logo_svg(dark_mode: bool = True) -> str:
+    """Retourne le logo SVG MarketBuilding adapté au thème actif (Sombre ou Clair)."""
+    win_fill = "#0e1117" if dark_mode else "#ffffff"
+    title_fill = "#ffffff" if dark_mode else "#0F172A"
+    sub_fill = "#94A3B8" if dark_mode else "#475569"
+    tag_fill = "#64748B" if dark_mode else "#64748B"
+    return f'''
+    <div style="text-align:center; padding: 6px 0 10px 0;">
+    <svg width="215" height="90" viewBox="0 0 210 90" xmlns="http://www.w3.org/2000/svg">
+      <!-- Bâtiment 1 (petit, gauche) -->
+      <rect x="12" y="30" width="16" height="36" rx="1.5" fill="#3B82F6"/>
+      <rect x="15" y="34" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="21" y="34" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="15" y="41" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="21" y="41" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="15" y="48" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="21" y="48" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+
+      <!-- Bâtiment 2 (grand, centre) -->
+      <rect x="31" y="12" width="22" height="54" rx="1.5" fill="#2563EB"/>
+      <rect x="35" y="16" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="42" y="16" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="35" y="23" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="42" y="23" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="35" y="30" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="42" y="30" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="35" y="37" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="42" y="37" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="35" y="44" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="42" y="44" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="35" y="51" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="42" y="51" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+
+      <!-- Bâtiment 3 (moyen, droite) -->
+      <rect x="56" y="24" width="18" height="42" rx="1.5" fill="#60A5FA"/>
+      <rect x="59" y="28" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="66" y="28" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="59" y="35" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="66" y="35" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="59" y="42" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="66" y="42" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="59" y="49" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+      <rect x="66" y="49" width="4" height="4" rx="0.5" fill="{win_fill}"/>
+
+      <!-- Grue de chantier -->
+      <line x1="78" y1="66" x2="78" y2="5" stroke="#F59E0B" stroke-width="2.5"/>
+      <line x1="78" y1="5" x2="56" y2="5" stroke="#F59E0B" stroke-width="2"/>
+      <line x1="78" y1="5" x2="88" y2="5" stroke="#F59E0B" stroke-width="2"/>
+      <line x1="60" y1="5" x2="60" y2="16" stroke="#F59E0B" stroke-width="1" stroke-dasharray="2,1"/>
+      <rect x="84" y="3" width="6" height="5" rx="1" fill="#D97706"/>
+      <rect x="73" y="62" width="10" height="4" rx="1" fill="#D97706"/>
+      <line x1="5" y1="66" x2="90" y2="66" stroke="#475569" stroke-width="1.5"/>
+
+      <!-- Typographie -->
+      <text x="100" y="34" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="19" font-weight="700" fill="{title_fill}" letter-spacing="0.5">Market</text>
+      <text x="100" y="54" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="19" font-weight="400" fill="{sub_fill}" letter-spacing="0.5">Building</text>
+      <line x1="100" y1="61" x2="200" y2="61" stroke="#F59E0B" stroke-width="1.5" opacity="0.75"/>
+      <text x="100" y="74" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="7" font-weight="600" fill="{tag_fill}" letter-spacing="1.5">MÉMOIRES TECHNIQUES BTP</text>
+    </svg>
+    </div>
+    '''
+
+
+def inject_custom_css(dark_mode: bool = True):
+    """Injecte une feuille de style complète et structurée avec support Mode Sombre / Mode Clair."""
+    if dark_mode:
+        vars_css = """
+            --bg-app: #0B0F17;
+            --bg-sidebar: #111827;
+            --bg-card: #151C28;
+            --bg-card-alt: #1B2434;
+            --bg-hero: linear-gradient(135deg, #111827 0%, #1E293B 100%);
+            --border-color: #263143;
+            --border-hover: #3B82F6;
+            --text-primary: #F8FAFC;
+            --text-secondary: #CBD5E1;
+            --text-muted: #94A3B8;
+            --tag-bg: rgba(59, 130, 246, 0.14);
+            --tag-text: #93C5FD;
+            --tag-border: rgba(59, 130, 246, 0.32);
+            --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.35);
+            --input-bg: #0F1520;
+            --uploader-bg: #111722;
+        """
+    else:
+        vars_css = """
+            --bg-app: #F1F5F9;
+            --bg-sidebar: #FFFFFF;
+            --bg-card: #FFFFFF;
+            --bg-card-alt: #F8FAFC;
+            --bg-hero: linear-gradient(135deg, #FFFFFF 0%, #EFF6FF 100%);
+            --border-color: #E2E8F0;
+            --border-hover: #2563EB;
+            --text-primary: #0F172A;
+            --text-secondary: #334155;
+            --text-muted: #64748B;
+            --tag-bg: #EFF6FF;
+            --tag-text: #1D4ED8;
+            --tag-border: #BFDBFE;
+            --shadow-card: 0 6px 20px rgba(15, 23, 42, 0.06);
+            --input-bg: #FFFFFF;
+            --uploader-bg: #F8FAFC;
+        """
+
+    st.markdown(
+        f"""
+        <style>
+            :root {{
+                {vars_css}
+            }}
+
+            /* Masquer les éléments parasites de Streamlit */
+            #MainMenu {{visibility: hidden;}}
+            footer {{visibility: hidden;}}
+            .stAppDeployButton {{display: none;}}
+            [data-testid="stHeader"] {{background: transparent !important;}}
+
+            /* Fond global et typographie */
+            .stApp {{
+                background-color: var(--bg-app) !important;
+                color: var(--text-primary) !important;
+            }}
+
+            .block-container {{
+                padding-top: 1.5rem !important;
+                padding-bottom: 3rem !important;
+                max-width: 1180px !important;
+            }}
+
+            /* Barre latérale */
+            section[data-testid="stSidebar"] {{
+                background-color: var(--bg-sidebar) !important;
+                border-right: 1px solid var(--border-color) !important;
+            }}
+            section[data-testid="stSidebar"] * {{
+                color: var(--text-primary);
+            }}
+
+            /* Titres et textes */
+            h1, h2, h3, h4, h5, h6,
+            [data-testid="stMarkdownContainer"] h1,
+            [data-testid="stMarkdownContainer"] h2,
+            [data-testid="stMarkdownContainer"] h3,
+            [data-testid="stMarkdownContainer"] h4 {{
+                color: var(--text-primary) !important;
+                letter-spacing: -0.01em;
+            }}
+            [data-testid="stMarkdownContainer"] p,
+            [data-testid="stMarkdownContainer"] li,
+            label, .stCaption {{
+                color: var(--text-secondary) !important;
+            }}
+
+            /* Champs de saisie, formulaires, sélecteurs, expanders */
+            div[data-testid="stForm"],
+            div[data-testid="stExpander"] {{
+                background-color: var(--bg-card) !important;
+                border: 1px solid var(--border-color) !important;
+                border-radius: 14px !important;
+                box-shadow: var(--shadow-card) !important;
+            }}
+            div[data-testid="stExpander"] details summary {{
+                color: var(--text-primary) !important;
+                font-weight: 600 !important;
+            }}
+
+            div[data-baseweb="input"] > div,
+            div[data-baseweb="textarea"] > div,
+            div[data-baseweb="select"] > div {{
+                background-color: var(--input-bg) !important;
+                border-color: var(--border-color) !important;
+                color: var(--text-primary) !important;
+                border-radius: 10px !important;
+            }}
+            div[data-baseweb="input"] input,
+            div[data-baseweb="textarea"] textarea {{
+                color: var(--text-primary) !important;
+            }}
+
+            /* Zone de drag & drop (File Uploader) */
+            [data-testid="stFileUploader"] section {{
+                background-color: var(--uploader-bg) !important;
+                border: 1.5px dashed var(--border-color) !important;
+                border-radius: 12px !important;
+                padding: 14px !important;
+                transition: all 0.2s ease;
+            }}
+            [data-testid="stFileUploader"] section:hover {{
+                border-color: var(--border-hover) !important;
+            }}
+            [data-testid="stFileUploader"] section * {{
+                color: var(--text-secondary) !important;
+            }}
+            [data-testid="stFileUploader"] section button {{
+                background-color: var(--bg-card) !important;
+                border: 1px solid var(--border-color) !important;
+                color: var(--text-primary) !important;
+                border-radius: 8px !important;
+                font-weight: 600 !important;
+            }}
+
+            /* Boutons principaux */
+            button[kind="primary"] {{
+                background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
+                color: #FFFFFF !important;
+                border: none !important;
+                border-radius: 11px !important;
+                padding: 0.65rem 1.2rem !important;
+                font-weight: 700 !important;
+                letter-spacing: 0.2px !important;
+                box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35) !important;
+                transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+            }}
+            button[kind="primary"]:hover {{
+                transform: translateY(-1px);
+                box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5) !important;
+            }}
+            button[kind="secondary"] {{
+                background-color: var(--bg-card) !important;
+                color: var(--text-primary) !important;
+                border: 1px solid var(--border-color) !important;
+                border-radius: 10px !important;
+                font-weight: 600 !important;
+            }}
+
+            /* Onglets (Tabs) */
+            button[data-baseweb="tab"] {{
+                color: var(--text-muted) !important;
+                font-weight: 600 !important;
+                font-size: 14px !important;
+            }}
+            button[data-baseweb="tab"][aria-selected="true"] {{
+                color: #3B82F6 !important;
+            }}
+
+            /* Composants personnalisés MarketBuilding */
+            .mb-hero {{
+                background: var(--bg-hero);
+                border: 1px solid var(--border-color);
+                border-left: 5px solid #2563EB;
+                border-radius: 16px;
+                padding: 22px 26px;
+                margin-bottom: 20px;
+                box-shadow: var(--shadow-card);
+            }}
+            .mb-hero-badge {{
+                display: inline-block;
+                background: var(--tag-bg);
+                color: var(--tag-text);
+                border: 1px solid var(--tag-border);
+                font-size: 11.5px;
+                font-weight: 700;
+                letter-spacing: 0.8px;
+                text-transform: uppercase;
+                padding: 4px 10px;
+                border-radius: 999px;
+                margin-bottom: 8px;
+            }}
+            .mb-hero-title {{
+                color: var(--text-primary);
+                font-size: 24px;
+                font-weight: 800;
+                margin: 0 0 6px 0;
+                line-height: 1.25;
+            }}
+            .mb-hero-sub {{
+                color: var(--text-secondary);
+                font-size: 14px;
+                margin: 0;
+                line-height: 1.55;
+            }}
+
+            /* Grille d'étapes (Vidéo & Méthodologie) */
+            .mb-steps-grid {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 14px;
+                margin-top: 12px;
+            }}
+            @media (max-width: 768px) {{
+                .mb-steps-grid {{
+                    grid-template-columns: 1fr;
+                }}
+            }}
+            .mb-step-card {{
+                background: var(--bg-card);
+                border: 1px solid var(--border-color);
+                border-radius: 12px;
+                padding: 14px 16px;
+                box-shadow: var(--shadow-card);
+            }}
+            .mb-step-title {{
+                font-weight: 700;
+                font-size: 13px;
+                margin-bottom: 5px;
+                letter-spacing: 0.2px;
+            }}
+            .mb-step-desc {{
+                color: var(--text-secondary);
+                font-size: 12.5px;
+                line-height: 1.45;
+            }}
+
+            /* Cartes des 5 zones d'upload */
+            .mb-zone-header {{
+                background: var(--bg-card);
+                border: 1px solid var(--border-color);
+                border-radius: 14px;
+                padding: 16px 18px 12px 18px;
+                margin-bottom: 8px;
+                box-shadow: var(--shadow-card);
+            }}
+            .mb-zone-top {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                margin-bottom: 6px;
+            }}
+            .mb-zone-num {{
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.7px;
+                padding: 3px 9px;
+                border-radius: 6px;
+            }}
+            .mb-zone-title {{
+                color: var(--text-primary);
+                font-size: 16px;
+                font-weight: 700;
+                margin: 2px 0 6px 0;
+            }}
+            .mb-zone-desc {{
+                color: var(--text-secondary);
+                font-size: 12.8px;
+                line-height: 1.45;
+                margin-bottom: 10px;
+            }}
+            .mb-tag-row {{
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-top: 6px;
+            }}
+            .mb-tag {{
+                background: var(--bg-card-alt);
+                border: 1px solid var(--border-color);
+                color: var(--text-secondary);
+                font-size: 11.5px;
+                font-weight: 600;
+                padding: 3px 8px;
+                border-radius: 6px;
+            }}
+
+            /* Barre récapitulative des 5 catégories */
+            .mb-summary-bar {{
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                gap: 10px;
+                margin: 16px 0 18px 0;
+            }}
+            @media (max-width: 900px) {{
+                .mb-summary-bar {{
+                    grid-template-columns: repeat(2, 1fr);
+                }}
+            }}
+            .mb-summary-pill {{
+                background: var(--bg-card);
+                border: 1px solid var(--border-color);
+                border-radius: 12px;
+                padding: 10px 12px;
+                text-align: center;
+                box-shadow: var(--shadow-card);
+            }}
+            .mb-summary-pill.active {{
+                border-color: #10B981;
+                background: rgba(16, 185, 129, 0.08);
+            }}
+            .mb-summary-label {{
+                font-size: 11.5px;
+                font-weight: 700;
+                color: var(--text-muted);
+                text-transform: uppercase;
+                letter-spacing: 0.4px;
+            }}
+            .mb-summary-val {{
+                font-size: 14px;
+                font-weight: 800;
+                color: var(--text-primary);
+                margin-top: 3px;
+            }}
+
+            /* Carte Login */
+            .password-card {{
+                max-width: 460px;
+                margin: 30px auto 20px auto;
+                background: var(--bg-card);
+                border: 1px solid var(--border-color);
+                border-top: 4px solid #2563EB;
+                border-radius: 16px;
+                padding: 24px 28px;
+                text-align: center;
+                box-shadow: var(--shadow-card);
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+inject_custom_css(st.session_state["dark_mode"])
+
+
+def render_theme_toggle(location_key: str):
+    """Affiche un bouton ON/OFF clair pour activer ou désactiver le Mode Sombre."""
+    current_dark = st.session_state.get("dark_mode", True)
+    new_dark = st.toggle(
+        "🌙 Mode Sombre (ON / OFF)",
+        value=current_dark,
+        key=f"theme_toggle_{location_key}",
+        help="Basculez entre le thème Sombre (Dark) et le thème Clair (Light) pour vos présentations clients.",
+    )
+    if new_dark != current_dark:
+        st.session_state["dark_mode"] = new_dark
+        config["dark_mode"] = new_dark
+        save_config(config)
+        st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -202,71 +642,79 @@ st.set_page_config(
 # ─────────────────────────────────────────────────────────────────────────
 def check_password():
     """Returns `True` if the user had the correct password."""
-    # Si aucun mot de passe n'est configuré dans les secrets, on laisse passer (pour le dev local)
     if "app_password" not in st.secrets:
         return True
 
     def password_entered():
         if st.session_state["password"] == st.secrets["app_password"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # don't store password
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
-    if "password_correct" not in st.session_state:
-        # First run, show input for password.
-        st.markdown('<div class="password-screen">', unsafe_allow_html=True)
-        st.text_input(
-            "🔑 Accès sécurisé :",
-            placeholder="Entrez votre mot de passe...",
-            type="password",
-            on_change=password_entered,
-            key="password"
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-        return False
-    elif not st.session_state["password_correct"]:
-        # Password not correct, show input + error.
-        st.markdown('<div class="password-screen">', unsafe_allow_html=True)
-        st.text_input(
-            "🔑 Accès sécurisé :",
-            placeholder="Entrez votre mot de passe...",
-            type="password",
-            on_change=password_entered,
-            key="password"
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.error("😕 Mot de passe incorrect")
-        return False
-    else:
-        # Password correct.
+    if st.session_state.get("password_correct", False):
         return True
+
+    # Barre supérieure sur l'écran de connexion avec switch Mode Sombre ON/OFF
+    top_col1, top_col2 = st.columns([4, 1.3])
+    with top_col2:
+        render_theme_toggle("login")
+
+    st.markdown(get_marketbuilding_logo_svg(st.session_state["dark_mode"]), unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="password-card">
+            <div class="mb-hero-badge">PORTAIL CLIENT SÉCURISÉ</div>
+            <div style="font-size:20px; font-weight:800; color:var(--text-primary); margin-bottom:6px;">
+                Plateforme IA · Mémoires Techniques BTP
+            </div>
+            <div style="font-size:13px; color:var(--text-secondary); margin-bottom:4px;">
+                Croisement automatique RC × CCTP × DPGF × PGC × Entreprise
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _, center_col, _ = st.columns([1.2, 2, 1.2])
+    with center_col:
+        st.text_input(
+            "🔑 Code d'accès client :",
+            placeholder="Entrez votre mot de passe...",
+            type="password",
+            on_change=password_entered,
+            key="password",
+        )
+        if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+            st.error("😕 Mot de passe incorrect. Veuillez réessayer.")
+    return False
+
 
 if not check_password():
     _feat = vt.featured_video()
     if _feat:
         st.markdown(
-            "<div style='text-align:center; margin-top:16px; margin-bottom:10px;'>"
-            "<span style='color:#94A3B8; font-size:14px; letter-spacing:1px; text-transform:uppercase;'>"
-            "Démonstration : Du CCTP au téléchargement du Mémoire Technique"
+            "<div style='text-align:center; margin-top:20px; margin-bottom:10px;'>"
+            "<span style='color:var(--text-muted); font-size:13px; font-weight:700; letter-spacing:1px; text-transform:uppercase;'>"
+            "🎬 Démonstration : Du Dossier de Consultation au Téléchargement du Mémoire Technique"
             "</span></div>",
             unsafe_allow_html=True,
         )
         st.video(str(_feat), autoplay=True, loop=True, muted=True)
         st.markdown(
             """
-            <div style='display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:14px;'>
-                <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #3B82F6; border-radius:10px; padding:12px;'>
-                    <div style='color:#3B82F6; font-weight:700; font-size:13px;'>ÉTAPE 1 · IMPORT DU CCTP</div>
-                    <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Déposez votre fichier <b>CCTP (PDF)</b> et cliquez sur <b>« Générer le Mémoire Technique »</b>.</div>
+            <div class="mb-steps-grid">
+                <div class="mb-step-card" style="border-left:4px solid #3B82F6;">
+                    <div class="mb-step-title" style="color:#3B82F6;">ÉTAPE 1 · DÉPÔT MULTI-DOCUMENTS</div>
+                    <div class="mb-step-desc">Déposez vos pièces (<b>RC, CCTP, DPGF, Annexes, Entreprise</b> en PDF, Word ou Excel) et lancez la génération.</div>
                 </div>
-                <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #F59E0B; border-radius:10px; padding:12px;'>
-                    <div style='color:#F59E0B; font-weight:700; font-size:13px;'>ÉTAPE 2 · TÉLÉCHARGEMENT DIRECT</div>
-                    <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Une fois rédigé, descendez en bas du document et cliquez sur <b>« 📥 Télécharger en PDF »</b> ou <b>« 📝 Télécharger en Word (.docx) »</b>.</div>
+                <div class="mb-step-card" style="border-left:4px solid #F59E0B;">
+                    <div class="mb-step-title" style="color:#F59E0B;">ÉTAPE 2 · TÉLÉCHARGEMENT DIRECT</div>
+                    <div class="mb-step-desc">Une fois rédigé, cliquez sur <b>« 📥 Télécharger en PDF »</b> ou <b>« 📝 Télécharger en Word (.docx) »</b>.</div>
                 </div>
-                <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #10B981; border-radius:10px; padding:12px;'>
-                    <div style='color:#10B981; font-weight:700; font-size:13px;'>ÉTAPE 3 · APERÇU PDF & ARCHIVES</div>
-                    <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Prévisualisez les pages du PDF officiel directement à l'écran (icône <b>⬇️</b> en haut à droite) ou retrouvez-le dans l'onglet <b>Archives</b>.</div>
+                <div class="mb-step-card" style="border-left:4px solid #10B981;">
+                    <div class="mb-step-title" style="color:#10B981;">ÉTAPE 3 · APERÇU PDF & ARCHIVES</div>
+                    <div class="mb-step-desc">Prévisualisez les pages du PDF officiel directement à l'écran ou retrouvez tous vos mémoires dans l'onglet <b>Archives</b>.</div>
                 </div>
             </div>
             """,
@@ -275,150 +723,64 @@ if not check_password():
     st.stop()
 
 
-
-# Charger la config (secrets → config.json → défauts)
-
 # ─────────────────────────────────────────────────────────────────────────
-# 0.7 INJECTION CSS (MODERNISATION & MINIMALISME)
-# ─────────────────────────────────────────────────────────────────────────
-def inject_custom_css():
-    st.markdown('''
-        <style>
-            /* Masquer les éléments par défaut de Streamlit (Menu, Footer, Header) */
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            
-            /* Conserver le header mais masquer le bouton Deploy et le menu droite */
-            .stAppDeployButton {display: none;}
-            [data-testid="stHeader"] {background: transparent;}
-
-            
-            /* Réduire la marge en haut de l'écran */
-            .block-container {
-                padding-top: 2rem !important;
-                padding-bottom: 2rem !important;
-                max-width: 1000px;
-            }
-            
-            /* Améliorer les bordures et ombres des conteneurs (minimalisme) */
-            div[data-testid="stForm"] {
-                border-radius: 12px;
-                border: 1px solid #333;
-                background-color: #12151b;
-            }
-            
-            /* Styliser l'écran de mot de passe pour faire "Login Screen" */
-            .password-screen {
-                max-width: 400px;
-                margin: 100px auto;
-                text-align: center;
-            }
-        </style>
-    ''', unsafe_allow_html=True)
-
-inject_custom_css()
-
-MARKETBUILDING_LOGO_SVG = '''
-<div style="text-align:center; padding: 10px 0;">
-<svg width="210" height="95" viewBox="0 0 210 95" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#1E3A5F;stop-opacity:1" />
-    </linearGradient>
-  </defs>
-
-  <!-- Bâtiment 1 (petit, gauche) -->
-  <rect x="12" y="32" width="16" height="36" rx="1" fill="#3B82F6"/>
-  <rect x="15" y="36" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="21" y="36" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="15" y="43" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="21" y="43" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="15" y="50" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="21" y="50" width="4" height="4" rx="0.5" fill="#0e1117"/>
-
-  <!-- Bâtiment 2 (grand, centre) -->
-  <rect x="31" y="14" width="22" height="54" rx="1" fill="#2563EB"/>
-  <rect x="35" y="18" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="42" y="18" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="35" y="25" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="42" y="25" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="35" y="32" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="42" y="32" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="35" y="39" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="42" y="39" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="35" y="46" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="42" y="46" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="35" y="53" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="42" y="53" width="4" height="4" rx="0.5" fill="#0e1117"/>
-
-  <!-- Bâtiment 3 (moyen, droite) -->
-  <rect x="56" y="26" width="18" height="42" rx="1" fill="#60A5FA"/>
-  <rect x="59" y="30" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="66" y="30" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="59" y="37" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="66" y="37" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="59" y="44" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="66" y="44" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="59" y="51" width="4" height="4" rx="0.5" fill="#0e1117"/>
-  <rect x="66" y="51" width="4" height="4" rx="0.5" fill="#0e1117"/>
-
-  <!-- Grue de chantier -->
-  <line x1="78" y1="68" x2="78" y2="6" stroke="#F59E0B" stroke-width="2.5"/>
-  <line x1="78" y1="6" x2="56" y2="6" stroke="#F59E0B" stroke-width="2"/>
-  <line x1="78" y1="6" x2="88" y2="6" stroke="#F59E0B" stroke-width="2"/>
-  <!-- Câble de la grue -->
-  <line x1="60" y1="6" x2="60" y2="18" stroke="#F59E0B" stroke-width="1" stroke-dasharray="2,1"/>
-  <!-- Contrepoids -->
-  <rect x="84" y="4" width="6" height="5" rx="1" fill="#D97706"/>
-  <!-- Base grue -->
-  <rect x="73" y="64" width="10" height="4" rx="1" fill="#D97706"/>
-
-  <!-- Sol -->
-  <line x1="5" y1="68" x2="90" y2="68" stroke="#475569" stroke-width="1.5"/>
-
-  <!-- Typographie -->
-  <text x="100" y="36" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="19" font-weight="700" fill="#ffffff" letter-spacing="0.5">Market</text>
-  <text x="100" y="56" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="19" font-weight="300" fill="#94A3B8" letter-spacing="0.5">Building</text>
-  <!-- Ligne déco -->
-  <line x1="100" y1="63" x2="200" y2="63" stroke="#F59E0B" stroke-width="1.5" opacity="0.6"/>
-  <!-- Tagline -->
-  <text x="100" y="76" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="7" fill="#64748B" letter-spacing="1.5">MÉMOIRES TECHNIQUES BTP</text>
-</svg>
-</div>
-'''
-
-
-
-config = load_config()
-
-# ─────────────────────────────────────────────────────────────────────────
-# 2. BARRE LATERALE – Navigation par onglets
+# 2. BARRE LATÉRALE – Navigation structurée & Mode Sombre ON/OFF
 # ─────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown(MARKETBUILDING_LOGO_SVG, unsafe_allow_html=True)
-    # st.title("MarketBuilding Pro")
+    st.markdown(get_marketbuilding_logo_svg(st.session_state["dark_mode"]), unsafe_allow_html=True)
 
+    # Interrupteur Mode Sombre ON/OFF bien visible pour le client
+    render_theme_toggle("sidebar")
+    st.caption(f"Thème actif : **{'🌙 Mode Sombre (ON)' if st.session_state['dark_mode'] else '☀️ Mode Clair (OFF)'}**")
+
+    st.divider()
+    st.markdown("<div style='font-size:11.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px;'>Navigation Principale</div>", unsafe_allow_html=True)
+
+    NAV_LABELS = {
+        "Génération": "📄  Générer un Mémoire",
+        "Profil": "🏢  Profil Entreprise",
+        "Archives": "📂  Archives & Livrables",
+        "Vidéos": "🎬  Studio Vidéos",
+        "Paramètres": "⚙️  Paramètres IA",
+    }
     page = st.radio(
         "Navigation",
-        options=["Génération", "Profil", "Archives", "Vidéos", "Paramètres"],
+        options=list(NAV_LABELS.keys()),
+        format_func=lambda k: NAV_LABELS[k],
         index=0,
         label_visibility="collapsed",
     )
 
     st.divider()
 
-    # Indicateurs de statut rapide
+    # Indicateurs de statut rapide présentés dans une carte propre
     entreprise_ok = bool(config["entreprise"].get("nom", "").strip())
     api_ok = bool(config["api_key"].strip())
+    os.makedirs("archives", exist_ok=True)
+    nb_archives = len([f for f in os.listdir("archives") if f.endswith((".pdf", ".docx"))])
 
-    st.markdown("**Statut de la configuration**")
-    st.markdown(f"{'✅' if api_ok else '❌'} Clé d'authentification système configurée")
-    st.markdown(f"{'✅' if entreprise_ok else 'ℹ️'} Profil entreprise {'renseigné' if entreprise_ok else '(optionnel)'}")
+    st.markdown(
+        f"""
+        <div style="background:var(--bg-card-alt); border:1px solid var(--border-color); border-radius:12px; padding:12px 14px;">
+            <div style="font-size:11.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px;">
+                État de la plateforme
+            </div>
+            <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:5px;">
+                {'🟢' if api_ok else '🔴'} <b>Moteur IA :</b> {config['llm_provider'].split(' ')[0] if api_ok else 'Non configuré'}
+            </div>
+            <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:5px;">
+                {'🟢' if entreprise_ok else '🔵'} <b>Entreprise :</b> {config['entreprise'].get('nom') or 'Via docs uploadés'}
+            </div>
+            <div style="font-size:12.5px; color:var(--text-secondary);">
+                📂 <b>Livrables archivés :</b> {nb_archives} fichier(s)
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.divider()
-    st.caption("MarketBuilding Engine v3.0")
-    st.caption("Système Sécurisé")
+    st.caption("MarketBuilding Pro v3.5 · Édition Client BTP")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -1300,6 +1662,21 @@ def generate_pdf(memoire_text: str, analyse_json: dict, entreprise: dict) -> io.
     return buffer
 
 # ═══════════════════════════════════════════════════════════════════════
+#  BARRE SUPÉRIEURE GLOBALE (THÈME SOMBRE ON/OFF & STATUT CLIENT)
+# ═══════════════════════════════════════════════════════════════════════
+top_bar_left, top_bar_right = st.columns([3.6, 1.4])
+with top_bar_left:
+    nom_ent_top = config["entreprise"].get("nom", "").strip() or "Espace Candidat BTP"
+    st.markdown(
+        f"<div style='font-size:12.5px; color:var(--text-muted); font-weight:600; padding-top:6px;'>"
+        f"🏗️ <b>MarketBuilding Pro</b> &nbsp;·&nbsp; {nom_ent_top} &nbsp;·&nbsp; Réponse aux Appels d'Offres Publics & Privés"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+with top_bar_right:
+    render_theme_toggle("topbar")
+
+# ═══════════════════════════════════════════════════════════════════════
 #  PAGES DE L'APPLICATION
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -1307,14 +1684,18 @@ def generate_pdf(memoire_text: str, analyse_json: dict, entreprise: dict) -> io.
 # PAGE : ⚙️ RÉGLAGES
 # ─────────────────────────────────────────────────────────────────────────
 if page == "Paramètres":
-    st.title("Paramètres")
     st.markdown(
-        "Configurez votre clé API et votre fournisseur LLM.\n\n"
-        "💡 **En cloud** : pour une persistance permanente, configurez vos secrets dans le "
-        "[dashboard Streamlit Cloud](https://share.streamlit.io/) → votre app → Settings → Secrets."
+        """
+        <div class="mb-hero">
+            <div class="mb-hero-badge">⚙️ CONFIGURATION SYSTÈME</div>
+            <div class="mb-hero-title">Paramètres du Moteur d'Intelligence Artificielle</div>
+            <p class="mb-hero-sub">
+                Configurez votre clé d'authentification et choisissez le modèle d'IA utilisé pour l'analyse croisée des DCE et la rédaction des mémoires techniques.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-
-    st.divider()
 
     # Montrer si les secrets cloud sont détectés
     secrets_detected = False
@@ -1327,14 +1708,14 @@ if page == "Paramètres":
     if secrets_detected:
         st.success("☁️ **Secrets Cloud détectés** – Votre clé API est lue depuis les secrets Streamlit Cloud.")
     else:
-        st.info("💻 **Mode local** – La configuration est stockée dans `config.json`.")
+        st.info("💻 **Mode local actif** – Vos réglages et votre thème sont enregistrés dans `config.json`.")
 
     with st.form("form_reglages"):
         new_provider = st.selectbox(
-            "Moteur de traitement",
+            "Moteur de traitement IA",
             options=["OpenAI (GPT-4o)", "Google Gemini (gemini-2.0-flash)", "DeepSeek (deepseek-chat)"],
             index=0 if "openai" in config["llm_provider"].lower() else (2 if "deepseek" in config["llm_provider"].lower() else 1),
-            help="Choisissez l'algorithme d'analyse à utiliser.",
+            help="Choisissez l'algorithme d'analyse et de rédaction à utiliser.",
         )
 
         new_api_key = st.text_input(
@@ -1350,7 +1731,7 @@ if page == "Paramètres":
             config["api_key"] = new_api_key
             config["llm_provider"] = new_provider
             save_config(config)
-            st.success("✅ Réglages sauvegardés pour cette session !")
+            st.success("✅ Réglages sauvegardés avec succès !")
             st.rerun()
 
     # Guide secrets cloud
@@ -1384,21 +1765,23 @@ if page == "Paramètres":
 # PAGE : 🏢 MON ENTREPRISE
 # ─────────────────────────────────────────────────────────────────────────
 elif page == "Profil":
-    st.title("Profil")
     st.markdown(
-        "Renseignez les informations de votre entreprise. "
-        "Elles seront automatiquement intégrées dans chaque mémoire technique.\n\n"
-        "💡 **En cloud** : ces données sont conservées pour la session en cours. "
-        "Pour les rendre permanentes, copiez-les dans les [Secrets Streamlit Cloud]"
-        "(voir Paramètres)."
+        """
+        <div class="mb-hero">
+            <div class="mb-hero-badge">🏢 IDENTITÉ & RÉFÉRENCES ENTREPRISE</div>
+            <div class="mb-hero-title">Profil de l'Entreprise Candidate</div>
+            <p class="mb-hero-sub">
+                Renseignez votre socle d'informations permanentes (SIRET, effectifs, assurances, certifications, parc matériel). Ces données seront croisées avec les pièces que vous déposez dans la zone 5 lors de chaque appel d'offres.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-
-    st.divider()
 
     ent = config["entreprise"]
 
     with st.form("form_entreprise"):
-        st.subheader("📋 Identité")
+        st.subheader("📋 Identité administrative")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -1407,7 +1790,7 @@ elif page == "Profil":
             ent["siret"] = st.text_input("SIRET", value=ent.get("siret", ""))
             ent["dirigeant"] = st.text_input("Dirigeant / Gérant", value=ent.get("dirigeant", ""))
         with col2:
-            ent["adresse"] = st.text_input("Adresse", value=ent.get("adresse", ""))
+            ent["adresse"] = st.text_input("Adresse du siège / dépôt", value=ent.get("adresse", ""))
             ent["telephone"] = st.text_input("Téléphone", value=ent.get("telephone", ""))
             ent["email"] = st.text_input("Email", value=ent.get("email", ""))
             ent["site_web"] = st.text_input("Site web", value=ent.get("site_web", ""))
@@ -1423,51 +1806,51 @@ elif page == "Profil":
 
         st.subheader("🏆 Qualifications & Certifications")
         ent["activites_principales"] = st.text_area(
-            "Activités principales",
+            "Activités principales / Corps d'état",
             value=ent.get("activites_principales", ""),
             height=80,
-            help="Ex : Plomberie, chauffage, climatisation, rénovation énergétique…",
+            help="Ex : Gros Œuvre, VRD, Électricité, Plomberie CVC, Menuiserie, Rénovation énergétique…",
         )
         col5, col6 = st.columns(2)
         with col5:
             ent["certifications"] = st.text_area(
-                "Certifications (RGE, ISO…)",
+                "Certifications (RGE, ISO, FNTP, MASE…)",
                 value=ent.get("certifications", ""),
                 height=80,
             )
         with col6:
             ent["qualifications"] = st.text_area(
-                "Qualifications (Qualibat, Qualifelec…)",
+                "Qualifications & Habilitations (Qualibat, Qualifelec, CACES, AIPR…)",
                 value=ent.get("qualifications", ""),
                 height=80,
             )
 
         ent["assurances"] = st.text_area(
-            "Assurances (décennale, RC Pro…)",
+            "Assurances (Décennale, RC Professionnelle, compagnie & n° de police)",
             value=ent.get("assurances", ""),
             height=80,
         )
 
-        st.subheader("💼 Références & Moyens")
+        st.subheader("💼 Références, Matériel & Déchèteries / Fournisseurs")
         ent["references_chantiers"] = st.text_area(
             "Références chantiers similaires",
             value=ent.get("references_chantiers", ""),
-            height=120,
+            height=110,
         )
         ent["moyens_materiels"] = st.text_area(
-            "Moyens matériels",
+            "Parc matériel, engins, camions, outillage",
             value=ent.get("moyens_materiels", ""),
             height=100,
         )
 
-        st.subheader("📝 Présentation libre")
+        st.subheader("📝 Présentation libre (Fournisseurs, Déchèteries SOSED, Historique)")
         ent["presentation_libre"] = st.text_area(
-            "Historique, valeurs, points forts…",
+            "Fournisseurs habituels, centres de tri/déchèteries partenaires (nom et distance), valeurs…",
             value=ent.get("presentation_libre", ""),
-            height=150,
+            height=130,
         )
 
-        submitted = st.form_submit_button("💾 Sauvegarder le profil", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("💾 Sauvegarder le profil entreprise", type="primary", use_container_width=True)
 
         if submitted:
             config["entreprise"] = ent
@@ -1487,7 +1870,6 @@ elif page == "Profil":
             toml_lines = ["[entreprise]"]
             for key, value in ent.items():
                 if value.strip():
-                    # Echapper les guillemets et retours à la ligne pour TOML
                     escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
                     toml_lines.append(f'{key} = "{escaped}"')
             toml_output = "\n".join(toml_lines)
@@ -1499,67 +1881,79 @@ elif page == "Profil":
 # PAGE : 📄 GÉNÉRER UN MÉMOIRE
 # ─────────────────────────────────────────────────────────────────────────
 elif page == "Génération":
-    st.title("Générateur de Mémoires Techniques BTP (Multi-Documents Croisés)")
-
     nom_ent = config["entreprise"].get("nom", "").strip()
-    if nom_ent:
-        st.markdown(
-            f"Bienvenue **{nom_ent}** · Uploadez les pièces de votre DCE (**RC, CCTP, DPGF, Annexes**) et les **Documents de votre Entreprise** pour générer un mémoire technique sur-mesure."
-        )
-    else:
-        st.markdown(
-            "Uploadez simultanément vos pièces de marché (**RC, CCTP, DPGF/DQE, Annexes**) et vos **Documents Entreprise** (PDF, Word ou Excel). "
-            "L'IA les croise automatiquement pour rédiger un **Mémoire Technique** complet et personnalisé."
-        )
+    sub_hero = (
+        f"Bienvenue <b>{nom_ent}</b> · Déposez simultanément vos pièces de marché (<b>RC, CCTP, DPGF/DQE, Annexes</b>) et vos <b>Documents Entreprise</b> (PDF, Word ou Excel). "
+        "L'IA les croise automatiquement pour rédiger un <b>Mémoire Technique</b> complet, chiffré et conforme au RC."
+        if nom_ent
+        else "Déposez simultanément vos pièces de marché (<b>RC, CCTP, DPGF/DQE, Annexes</b>) et vos <b>Documents Entreprise</b> (PDF, Word ou Excel). "
+             "L'IA les croise automatiquement pour rédiger un <b>Mémoire Technique</b> complet, chiffré et conforme au RC."
+    )
+    st.markdown(
+        f"""
+        <div class="mb-hero">
+            <div class="mb-hero-badge">🏗️ INGÉNIERIE D'APPELS D'OFFRES BTP · CROISEMENT IA MULTI-DOCUMENTS</div>
+            <div class="mb-hero-title">Générateur de Mémoires Techniques sur-mesure</div>
+            <p class="mb-hero-sub">{sub_hero}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if not config["api_key"].strip():
-        st.warning("⚠️ **Clé d'authentification système manquante.** Allez dans **Paramètres** pour la configurer.")
+        st.warning("⚠️ **Clé d'authentification système manquante.** Rendez-vous dans l'onglet **Paramètres** pour la configurer.")
 
     _feat_main = vt.featured_video()
     if _feat_main:
-        with st.expander("🎬 Tutoriel vidéo : Comment générer et télécharger votre Mémoire Technique", expanded=False):
+        with st.expander("🎬 Démonstration Vidéo : Du dépôt des pièces au téléchargement du Mémoire Technique", expanded=False):
             st.video(str(_feat_main), autoplay=True, loop=True, muted=True)
             st.markdown(
                 """
-                <div style='display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-top:10px;'>
-                    <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #3B82F6; border-radius:10px; padding:12px;'>
-                        <div style='color:#3B82F6; font-weight:700; font-size:13px;'>1. Importer vos documents (RC, CCTP, DPGF…)</div>
-                        <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Déposez vos fichiers (PDF, Word, Excel) dans les 5 zones dédiées puis cliquez sur <b>« 🚀 Générer le Mémoire Technique »</b>.</div>
+                <div class="mb-steps-grid">
+                    <div class="mb-step-card" style="border-left:4px solid #3B82F6;">
+                        <div class="mb-step-title" style="color:#3B82F6;">1. Importer vos documents (RC, CCTP, DPGF…)</div>
+                        <div class="mb-step-desc">Déposez vos fichiers (PDF, Word, Excel) dans les 5 zones dédiées puis cliquez sur <b>« 🚀 Croiser les documents & Générer »</b>.</div>
                     </div>
-                    <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #F59E0B; border-radius:10px; padding:12px;'>
-                        <div style='color:#F59E0B; font-weight:700; font-size:13px;'>2. Boutons de téléchargement PDF & Word</div>
-                        <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>En bas du mémoire généré, cliquez sur le bouton bleu <b>« 📥 Télécharger en PDF »</b> ou sur <b>« 📝 Télécharger en Word (.docx) »</b>.</div>
+                    <div class="mb-step-card" style="border-left:4px solid #F59E0B;">
+                        <div class="mb-step-title" style="color:#F59E0B;">2. Boutons de téléchargement PDF & Word</div>
+                        <div class="mb-step-desc">En bas du mémoire généré, cliquez sur le bouton bleu <b>« 📥 Télécharger en PDF »</b> ou sur <b>« 📝 Télécharger en Word (.docx) »</b>.</div>
                     </div>
-                    <div style='background:#12151b; border:1px solid #262b36; border-left:3px solid #10B981; border-radius:10px; padding:12px;'>
-                        <div style='color:#10B981; font-weight:700; font-size:13px;'>3. Visionneuse PDF & Onglet Archives</div>
-                        <div style='color:#cbd5e1; font-size:12.5px; margin-top:4px;'>Consultez l'<b>Aperçu du document PDF</b> (bouton <b>⬇️</b> intégré au lecteur) ou retrouvez tous vos mémoires dans l'onglet <b>Archives</b>.</div>
+                    <div class="mb-step-card" style="border-left:4px solid #10B981;">
+                        <div class="mb-step-title" style="color:#10B981;">3. Visionneuse PDF & Onglet Archives</div>
+                        <div class="mb-step-desc">Consultez l'<b>Aperçu du document PDF</b> (bouton <b>⬇️</b> intégré au lecteur) ou retrouvez tous vos mémoires dans l'onglet <b>Archives</b>.</div>
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-    st.divider()
-
     ALLOWED_DOC_TYPES = ["pdf", "docx", "xlsx", "xls", "csv"]
 
     mode_tab1, mode_tab2 = st.tabs([
-        "🧩 Dossier Complet Croisé (5 catégories : RC + CCTP + DPGF + Annexes + Entreprise)",
+        "🧩 Dossier Complet Croisé (5 Catégories : RC + CCTP + DPGF + Annexes + Entreprise)",
         "📚 Génération en Lot (Plusieurs marchés distincts d'un coup)",
     ])
 
     with mode_tab1:
+        # Bandeau des 4 engagements méthodologiques
         st.markdown(
             """
-            <div style='background:#12151b; border:1px solid #262b36; border-left:4px solid #3B82F6; border-radius:10px; padding:14px 16px; margin-bottom:18px;'>
-                <div style='color:#f8fafc; font-weight:700; font-size:14px; margin-bottom:4px;'>
-                    🔗 Croisement intelligent des 5 catégories de documents (PDF, Word .docx, Excel .xlsx/.xls/.csv)
+            <div class="mb-steps-grid" style="grid-template-columns: repeat(4, 1fr); margin-top:4px; margin-bottom:18px;">
+                <div class="mb-step-card" style="border-top:3px solid #3B82F6;">
+                    <div class="mb-step-title" style="color:#3B82F6;">1 · Ordre exact du RC</div>
+                    <div class="mb-step-desc">Sommaire calqué sur l'ordre des critères et sous-critères de la <i>Valeur Technique</i> et respect du nombre de pages max.</div>
                 </div>
-                <div style='color:#94a3b8; font-size:13px; line-height:1.5;'>
-                    • <b>Ordre exact du RC</b> : sommaire calqué sur les critères de la Valeur Technique.<br>
-                    • <b>Fusion multi-CCTP</b> : CCTP Général (Lot 00) combiné aux CCTP des lots techniques.<br>
-                    • <b>Croisement CCTP × DPGF × Entreprise</b> : chaque tâche cite la norme DTU, la quantité exacte de la DPGF et le matériel/personnel dédié.<br>
-                    • <b>Zéro invention</b> : toute donnée absente des pièces est signalée par <code>[À COMPLÉTER : préciser ici...]</code>.
+                <div class="mb-step-card" style="border-top:3px solid #2563EB;">
+                    <div class="mb-step-title" style="color:#2563EB;">2 · Fusion Multi-CCTP</div>
+                    <div class="mb-step-desc">Combinaison du CCTP Général (Lot 00) avec les prescriptions techniques, matériaux et DTU de chaque lot.</div>
+                </div>
+                <div class="mb-step-card" style="border-top:3px solid #F59E0B;">
+                    <div class="mb-step-title" style="color:#F59E0B;">3 · Croisement CCTP × DPGF</div>
+                    <div class="mb-step-desc">Zéro phrase vague : chaque tâche cite la quantité exacte de la DPGF (<code>m²</code>, <code>m³</code>, <code>ml</code>) et les moyens dédiés.</div>
+                </div>
+                <div class="mb-step-card" style="border-top:3px solid #10B981;">
+                    <div class="mb-step-title" style="color:#10B981;">4 · Garantie Anti-Invention</div>
+                    <div class="mb-step-desc">Aucune donnée inventée : toute information absente des pièces est signalée par <code>[À COMPLÉTER : ...]</code>.</div>
                 </div>
             </div>
             """,
@@ -1567,14 +1961,31 @@ elif page == "Génération":
         )
 
         # ── ZONE 1 & ZONE 2 ─────────────────────────────────────────────────
-        col_z1, col_z2 = st.columns(2)
+        col_z1, col_z2 = st.columns(2, gap="medium")
         with col_z1:
-            st.markdown("#### 1️⃣ Le Règlement de Consultation (RC) *(1 fichier)*")
-            st.caption(
-                "🔍 **Ce que l'outil y cherche :** Critères et sous-critères de notation de la *Valeur Technique*, barème de points, plan imposé et nombre de pages maximum."
+            st.markdown(
+                """
+                <div class="mb-zone-header" style="border-left:4px solid #3B82F6;">
+                    <div class="mb-zone-top">
+                        <span class="mb-zone-num" style="background:rgba(59,130,246,0.15); color:#3B82F6;">CATÉGORIE 1 · 1 FICHIER</span>
+                        <span style="font-size:11.5px; color:var(--text-muted); font-weight:600;">PDF · Word · Excel</span>
+                    </div>
+                    <div class="mb-zone-title">📋 Le Règlement de Consultation (RC)</div>
+                    <div class="mb-zone-desc">
+                        Permet de structurer le mémoire exactement selon les attentes de l'acheteur public ou privé.
+                    </div>
+                    <div class="mb-tag-row">
+                        <span class="mb-tag">🎯 Critères Valeur Technique</span>
+                        <span class="mb-tag">⚖️ Barème de points</span>
+                        <span class="mb-tag">📑 Plan imposé</span>
+                        <span class="mb-tag">📏 Limite de pages</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
             rc_file = st.file_uploader(
-                "Uploader le Règlement de Consultation (RC)",
+                "Déposer le Règlement de Consultation (RC)",
                 type=ALLOWED_DOC_TYPES,
                 key="upload_rc",
                 accept_multiple_files=False,
@@ -1582,29 +1993,62 @@ elif page == "Génération":
             )
 
         with col_z2:
-            st.markdown("#### 2️⃣ Les CCTP *(Upload multiple : Lot 00 + Lots techniques)*")
-            st.caption(
-                "🔍 **Ce que l'outil y cherche :** Adresse et contraintes du chantier (accès, horaires, site occupé), matériaux demandés, normes (DTU), méthodes de pose et gestion des déchets (SOSED)."
+            st.markdown(
+                """
+                <div class="mb-zone-header" style="border-left:4px solid #2563EB;">
+                    <div class="mb-zone-top">
+                        <span class="mb-zone-num" style="background:rgba(37,99,235,0.15); color:#2563EB;">CATÉGORIE 2 · UPLOAD MULTIPLE</span>
+                        <span style="font-size:11.5px; color:var(--text-muted); font-weight:600;">PDF · Word · Excel</span>
+                    </div>
+                    <div class="mb-zone-title">📐 Les CCTP (Lot 00 Général + Lots Techniques)</div>
+                    <div class="mb-zone-desc">
+                        Déposez le CCTP Général (Lot 00) ainsi qu'un ou plusieurs CCTP de lots techniques (Gros Œuvre, VRD, Électricité…).
+                    </div>
+                    <div class="mb-tag-row">
+                        <span class="mb-tag">📍 Adresse & Accès</span>
+                        <span class="mb-tag">🕒 Horaires & Site occupé</span>
+                        <span class="mb-tag">🧱 Matériaux & DTU</span>
+                        <span class="mb-tag">♻️ Déchets SOSED</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
             cctp_multi_files = st.file_uploader(
-                "Uploader le CCTP Général (Lot 00) et/ou un ou plusieurs CCTP de lots techniques",
+                "Déposer le CCTP Général (Lot 00) et/ou vos CCTP de lots techniques",
                 type=ALLOWED_DOC_TYPES,
                 key="upload_cctp_multi",
                 accept_multiple_files=True,
-                help="Vous pouvez déposer simultanément le CCTP Général (Lot 00) et plusieurs CCTP de lots (Gros Œuvre, VRD, Électricité...).",
+                help="Vous pouvez déposer simultanément le CCTP Général (Lot 00) et plusieurs CCTP de lots techniques.",
             )
 
-        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
 
         # ── ZONE 3 & ZONE 4 ─────────────────────────────────────────────────
-        col_z3, col_z4 = st.columns(2)
+        col_z3, col_z4 = st.columns(2, gap="medium")
         with col_z3:
-            st.markdown("#### 3️⃣ La DPGF / DQE (Devis quantitatif) *(1 ou plusieurs fichiers)*")
-            st.caption(
-                "🔍 **Ce que l'outil y cherche :** Les quantités exactes des travaux (`m²`, `m³`, `ml`, `unités`) pour dimensionner le planning, les cadences et les équipes."
+            st.markdown(
+                """
+                <div class="mb-zone-header" style="border-left:4px solid #F59E0B;">
+                    <div class="mb-zone-top">
+                        <span class="mb-zone-num" style="background:rgba(245,158,11,0.15); color:#F59E0B;">CATÉGORIE 3 · UPLOAD MULTIPLE</span>
+                        <span style="font-size:11.5px; color:var(--text-muted); font-weight:600;">Excel · PDF · Word</span>
+                    </div>
+                    <div class="mb-zone-title">📊 La DPGF / DQE (Devis Quantitatif)</div>
+                    <div class="mb-zone-desc">
+                        Extrait les métrés exacts du chantier pour justifier scientifiquement vos cadences, durées et effectifs.
+                    </div>
+                    <div class="mb-tag-row">
+                        <span class="mb-tag">📏 Quantités (m², m³, ml, u)</span>
+                        <span class="mb-tag">⏱️ Cadences & Rendements</span>
+                        <span class="mb-tag">📅 Dimensionnement planning</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
             dpgf_files = st.file_uploader(
-                "Uploader la DPGF / le DQE (Excel, PDF ou Word)",
+                "Déposer la DPGF / le DQE (fichiers Excel, PDF ou Word)",
                 type=ALLOWED_DOC_TYPES,
                 key="upload_dpgf",
                 accept_multiple_files=True,
@@ -1612,36 +2056,68 @@ elif page == "Génération":
             )
 
         with col_z4:
-            st.markdown("#### 4️⃣ Les Annexes Chantier *(Optionnel — Upload multiple)*")
-            st.caption(
-                "🔍 **Ce que l'outil y cherche :** PGC Sécurité, Plan de masse, Étude de sol → risques sécurité spécifiques au chantier, coactivité et installation de chantier (base vie, stockage)."
+            st.markdown(
+                """
+                <div class="mb-zone-header" style="border-left:4px solid #8B5CF6;">
+                    <div class="mb-zone-top">
+                        <span class="mb-zone-num" style="background:rgba(139,92,246,0.15); color:#8B5CF6;">CATÉGORIE 4 · OPTIONNEL MULTIPLE</span>
+                        <span style="font-size:11.5px; color:var(--text-muted); font-weight:600;">PDF · Word · Excel</span>
+                    </div>
+                    <div class="mb-zone-title">🦺 Les Annexes Chantier (PGC, Plan de masse, Sol)</div>
+                    <div class="mb-zone-desc">
+                        Personnalise la sécurité (PPSPS/PGC) et le plan d'installation de chantier (base vie, grue, stockage).
+                    </div>
+                    <div class="mb-tag-row">
+                        <span class="mb-tag">⚠️ Risques spécifiques PGC</span>
+                        <span class="mb-tag">🤝 Coactivité</span>
+                        <span class="mb-tag">🏗️ Base vie & Stockage</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
             annexes_files = st.file_uploader(
-                "Uploader les Annexes Chantier (PGC Sécurité, Plan de masse, Étude de sol…)",
+                "Déposer les Annexes Chantier (PGC Sécurité, Plan de masse, Étude de sol…)",
                 type=ALLOWED_DOC_TYPES,
                 key="upload_annexes",
                 accept_multiple_files=True,
                 help="Optionnel : ajoutez le PGC, le plan d'installation de chantier, l'étude géotechnique, etc.",
             )
 
-        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
 
         # ── ZONE 5 : DOCUMENTS DE L'ENTREPRISE ──────────────────────────────
         st.markdown(
-            "#### 5️⃣ Les Documents de l'Entreprise *(Upload multiple : Ancien mémoire, personnel, parc matériel, certifications)*"
-        )
-        st.caption(
-            "🔍 **Ce que l'outil y cherche :** Organigramme, CV de l'encadrement, liste des engins/camions/outils, diplômes sécurité (CACES, AIPR, habilitations), certifications (Qualibat, RGE, FNTP), nom des fournisseurs et déchèteries habituels."
+            """
+            <div class="mb-zone-header" style="border-left:4px solid #10B981;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num" style="background:rgba(16,185,129,0.15); color:#10B981;">CATÉGORIE 5 · UPLOAD MULTIPLE</span>
+                    <span style="font-size:11.5px; color:var(--text-muted); font-weight:600;">PDF · Word · Excel</span>
+                </div>
+                <div class="mb-zone-title">🏢 Les Documents de l'Entreprise (Ancien mémoire, Personnel, Matériel, Certifications)</div>
+                <div class="mb-zone-desc">
+                    L'IA y puise vos ressources réelles pour associer à chaque tâche du CCTP votre personnel habilité, vos engins et vos filières de tri.
+                </div>
+                <div class="mb-tag-row">
+                    <span class="mb-tag">👥 Organigramme & CV</span>
+                    <span class="mb-tag">🚜 Engins, Camions & Outils</span>
+                    <span class="mb-tag">🪪 CACES, AIPR, Habilitations</span>
+                    <span class="mb-tag">🏅 Qualibat, RGE, FNTP</span>
+                    <span class="mb-tag">🚚 Fournisseurs & Déchèteries</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
         entreprise_files = st.file_uploader(
-            "Uploader les documents de votre entreprise (ancien mémoire technique, liste personnel, parc matériel, attestations Qualibat/RGE/CACES…)",
+            "Déposer les documents de votre entreprise (ancien mémoire technique, liste personnel, parc matériel, attestations Qualibat/RGE/CACES…)",
             type=ALLOWED_DOC_TYPES,
             key="upload_entreprise_docs",
             accept_multiple_files=True,
             help="Déposez tous vos justificatifs et documents internes (PDF, Word ou Excel). Ils seront croisés avec le CCTP et la DPGF.",
         )
 
-        # Récapitulatif visuel des pièces chargées
+        # ── TABLEAU DE BORD VISUEL DES PIÈCES PRÊTES À CROISER ──────────────
         nb_rc = 1 if rc_file else 0
         nb_cctp_m = len(cctp_multi_files) if cctp_multi_files else 0
         nb_dpgf = len(dpgf_files) if dpgf_files else 0
@@ -1649,15 +2125,38 @@ elif page == "Génération":
         nb_ent_docs = len(entreprise_files) if entreprise_files else 0
         total_uploaded = nb_rc + nb_cctp_m + nb_dpgf + nb_ann + nb_ent_docs
 
-        if total_uploaded > 0:
-            st.info(
-                f"📂 **{total_uploaded} document(s) prêt(s) à être croisé(s)** : "
-                f"**RC** ({nb_rc}) · **CCTP** ({nb_cctp_m}) · **DPGF/DQE** ({nb_dpgf}) · "
-                f"**Annexes Chantier** ({nb_ann}) · **Documents Entreprise** ({nb_ent_docs})"
-            )
+        st.markdown(
+            f"""
+            <div class="mb-summary-bar">
+                <div class="mb-summary-pill {'active' if nb_rc > 0 else ''}">
+                    <div class="mb-summary-label">1. Règlement (RC)</div>
+                    <div class="mb-summary-val">{'✅ 1 fichier' if nb_rc > 0 else '⚪ 0 fichier'}</div>
+                </div>
+                <div class="mb-summary-pill {'active' if nb_cctp_m > 0 else ''}">
+                    <div class="mb-summary-label">2. CCTP (Lot 00 + Lots)</div>
+                    <div class="mb-summary-val">{f'✅ {nb_cctp_m} fichier(s)' if nb_cctp_m > 0 else '⚪ 0 fichier'}</div>
+                </div>
+                <div class="mb-summary-pill {'active' if nb_dpgf > 0 else ''}">
+                    <div class="mb-summary-label">3. DPGF / DQE</div>
+                    <div class="mb-summary-val">{f'✅ {nb_dpgf} fichier(s)' if nb_dpgf > 0 else '⚪ 0 fichier'}</div>
+                </div>
+                <div class="mb-summary-pill {'active' if nb_ann > 0 else ''}">
+                    <div class="mb-summary-label">4. Annexes Chantier</div>
+                    <div class="mb-summary-val">{f'✅ {nb_ann} fichier(s)' if nb_ann > 0 else '⚪ Optionnel'}</div>
+                </div>
+                <div class="mb-summary-pill {'active' if (nb_ent_docs > 0 or bool(nom_ent)) else ''}">
+                    <div class="mb-summary-label">5. Docs Entreprise</div>
+                    <div class="mb-summary-val">{f'✅ {nb_ent_docs} doc(s)' + (' + Profil' if nom_ent else '') if (nb_ent_docs > 0 or nom_ent) else '⚪ 0 fichier'}</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         generate_crossed_btn = st.button(
-            "🚀 Croiser les documents & Générer le Mémoire Technique Complet",
+            f"🚀 Croiser les {total_uploaded} document(s) & Générer le Mémoire Technique Complet"
+            if total_uploaded > 0
+            else "🚀 Croiser les documents & Générer le Mémoire Technique Complet",
             type="primary",
             use_container_width=True,
             key="btn_generate_crossed",
@@ -2054,9 +2553,18 @@ elif page == "Génération":
 # PAGE : 📂 ARCHIVES
 # ─────────────────────────────────────────────────────────────────────────
 elif page == "Archives":
-    st.title("Archives des mémoires")
-    st.markdown("Tous les mémoires techniques générés, retéléchargeables à tout moment.")
-    st.divider()
+    st.markdown(
+        """
+        <div class="mb-hero">
+            <div class="mb-hero-badge">📂 GESTION DOCUMENTAIRE & LIVRABLES</div>
+            <div class="mb-hero-title">Archives des Mémoires Techniques</div>
+            <p class="mb-hero-sub">
+                Retrouvez l'ensemble de vos mémoires techniques générés (versions officielles PDF et Word .docx), téléchargeables individuellement ou en pack .ZIP.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     os.makedirs("archives", exist_ok=True)
     fichiers = [f for f in os.listdir("archives") if f.endswith((".pdf", ".docx"))]
@@ -2084,20 +2592,28 @@ elif page == "Archives":
         for fichier in fichiers:
             chemin = os.path.join("archives", fichier)
             date_mod = datetime.fromtimestamp(os.path.getmtime(chemin)).strftime("%d/%m/%Y à %H:%M")
-            c1, c2, c3 = st.columns([3, 1, 1])
+            c1, c2, c3 = st.columns([3.2, 1.1, 0.9])
             with c1:
-                st.markdown(f"**{'📄' if fichier.endswith('.pdf') else '📝'} {fichier}**")
-                st.caption(f"Généré le {date_mod} • {os.path.getsize(chemin) / 1024:.0f} Ko")
+                badge_ext = "PDF OFFICIEL" if fichier.endswith(".pdf") else "WORD ÉDITABLE"
+                badge_col = "#3B82F6" if fichier.endswith(".pdf") else "#10B981"
+                st.markdown(
+                    f"<div class='mb-zone-header' style='padding:10px 14px; margin-bottom:6px; border-left:4px solid {badge_col};'>"
+                    f"<span class='mb-zone-num' style='background:rgba(59,130,246,0.12); color:{badge_col}; margin-right:8px;'>{badge_ext}</span>"
+                    f"<b style='color:var(--text-primary); font-size:14px;'>{fichier}</b><br>"
+                    f"<span style='color:var(--text-muted); font-size:12px;'>Généré le {date_mod} &nbsp;•&nbsp; {os.path.getsize(chemin) / 1024:.0f} Ko</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
             with c2:
                 with open(chemin, "rb") as f:
                     st.download_button(
-                        "Télécharger", data=f.read(), file_name=fichier,
+                        "📥 Télécharger", data=f.read(), file_name=fichier,
                         mime="application/pdf" if fichier.endswith(".pdf")
                         else "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         use_container_width=True, key=f"dl_{fichier}",
                     )
             with c3:
-                if st.button("Supprimer", key=f"del_{fichier}", use_container_width=True):
+                if st.button("🗑️ Supprimer", key=f"del_{fichier}", use_container_width=True):
                     os.remove(chemin)
                     st.rerun()
 
@@ -2106,11 +2622,17 @@ elif page == "Archives":
 # PAGE : 🎬 VIDÉOS
 # ─────────────────────────────────────────────────────────────────────────
 elif page == "Vidéos":
-    st.title("Vidéos de présentation")
     st.markdown(
-        "Importez vos enregistrements (même très lourds, .mov Retina inclus), "
-        "ils sont automatiquement optimisés pour le web. Générez ensuite une vidéo de "
-        "présentation professionnelle du service en un clic."
+        """
+        <div class="mb-hero">
+            <div class="mb-hero-badge">🎬 STUDIO DE PRÉSENTATION CLIENT</div>
+            <div class="mb-hero-title">Vidéos de Démonstration & Tutoriels</div>
+            <p class="mb-hero-sub">
+                Importez vos enregistrements d'écran (.mov Retina, .mp4), optimisez-les pour le web et générez vos vidéos de présentation commerciale en un clic.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     DESKTOP_OUT = Path.home() / "Desktop" / "MarketBuilding Vidéos"
