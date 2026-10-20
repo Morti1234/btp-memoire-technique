@@ -269,25 +269,31 @@ def get_marketbuilding_logo_svg(dark_mode: bool = False) -> str:
 
 def inject_custom_css(dark_mode: bool = False):
     """
-    Injecte la feuille de style globale :
-    - Toute la Navigation Principale (barre latérale & onglets de navigation) est TOUJOURS en Mode Clair
-      pour une lisibilité et une présentation client irréprochables.
-    - L'espace de travail central bascule entre Mode Clair (OFF) et Mode Sombre (ON) selon le switch.
+    Injecte la feuille de style complète et unifiée :
+    Quand Mode Sombre est OFF -> TOUT le site (barre latérale, navigation, onglets, contenus ouverts,
+    formulaires, zones d'upload, menus déroulants, expanders) est en Thème Clair.
+    Quand Mode Sombre est ON  -> TOUT le site (barre latérale, navigation, onglets, contenus ouverts,
+    formulaires, zones d'upload, menus déroulants, expanders) passe en Thème Sombre.
     """
     if dark_mode:
         vars_css = """
             --bg-app: #0B0F17;
+            --bg-sidebar: #111827;
             --bg-card: #151C28;
-            --bg-card-alt: #1B2434;
+            --bg-card-alt: #1E293B;
             --bg-hero: linear-gradient(135deg, #111827 0%, #1E293B 100%);
             --border-color: #263143;
             --border-hover: #3B82F6;
             --text-primary: #F8FAFC;
             --text-secondary: #CBD5E1;
             --text-muted: #94A3B8;
-            --tag-bg: rgba(59, 130, 246, 0.14);
+            --nav-item-bg: #151C28;
+            --nav-item-hover: #1E293B;
+            --nav-active-bg: rgba(37, 99, 235, 0.22);
+            --nav-active-text: #60A5FA;
+            --tag-bg: rgba(59, 130, 246, 0.16);
             --tag-text: #93C5FD;
-            --tag-border: rgba(59, 130, 246, 0.32);
+            --tag-border: rgba(59, 130, 246, 0.35);
             --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.35);
             --input-bg: #0F1520;
             --uploader-bg: #111722;
@@ -295,6 +301,7 @@ def inject_custom_css(dark_mode: bool = False):
     else:
         vars_css = """
             --bg-app: #F8FAFC;
+            --bg-sidebar: #FFFFFF;
             --bg-card: #FFFFFF;
             --bg-card-alt: #F1F5F9;
             --bg-hero: linear-gradient(135deg, #FFFFFF 0%, #EFF6FF 100%);
@@ -303,6 +310,10 @@ def inject_custom_css(dark_mode: bool = False):
             --text-primary: #0F172A;
             --text-secondary: #334155;
             --text-muted: #64748B;
+            --nav-item-bg: #F8FAFC;
+            --nav-item-hover: #EFF6FF;
+            --nav-active-bg: #EFF6FF;
+            --nav-active-text: #1D4ED8;
             --tag-bg: #EFF6FF;
             --tag-text: #1D4ED8;
             --tag-border: #BFDBFE;
@@ -325,67 +336,71 @@ def inject_custom_css(dark_mode: bool = False):
             [data-testid="stHeader"] {{background: transparent !important;}}
 
             /* Fond global et typographie */
-            .stApp {{
+            .stApp,
+            [data-testid="stAppViewContainer"],
+            [data-testid="stMain"] {{
                 background-color: var(--bg-app) !important;
                 color: var(--text-primary) !important;
             }}
 
             .block-container {{
-                padding-top: 1.5rem !important;
+                padding-top: 1.2rem !important;
                 padding-bottom: 3rem !important;
                 max-width: 1180px !important;
             }}
 
-            /* ── NAVIGATION PRINCIPALE TOUJOURS EN MODE CLAIR ── */
-            section[data-testid="stSidebar"] {{
-                background-color: #FFFFFF !important;
-                border-right: 1px solid #E2E8F0 !important;
-                box-shadow: 4px 0 20px rgba(15, 23, 42, 0.04) !important;
+            /* ── BARRE LATÉRALE & NAVIGATION PRINCIPALE (CLAIR ET SOMBRE UNIFIÉS) ── */
+            section[data-testid="stSidebar"],
+            section[data-testid="stSidebar"] > div {{
+                background-color: var(--bg-sidebar) !important;
+                border-right: 1px solid var(--border-color) !important;
             }}
             section[data-testid="stSidebar"] * {{
-                color: #0F172A !important;
+                color: var(--text-primary) !important;
             }}
             section[data-testid="stSidebar"] .stCaption,
             section[data-testid="stSidebar"] small {{
-                color: #64748B !important;
+                color: var(--text-muted) !important;
             }}
             section[data-testid="stSidebar"] hr {{
-                border-color: #E2E8F0 !important;
+                border-color: var(--border-color) !important;
             }}
-            /* Boutons radio de la Navigation Principale en Mode Clair structuré */
-            section[data-testid="stSidebar"] div[role="radiogroup"] label {{
-                background-color: #F8FAFC !important;
-                border: 1px solid #E2E8F0 !important;
+
+            /* Boutons radio de la Navigation (Barre latérale & Barre horizontale) */
+            div[role="radiogroup"] label {{
+                background-color: var(--nav-item-bg) !important;
+                border: 1px solid var(--border-color) !important;
                 border-radius: 10px !important;
                 padding: 10px 14px !important;
                 margin-bottom: 6px !important;
                 transition: all 0.15s ease !important;
                 font-weight: 600 !important;
+                color: var(--text-primary) !important;
             }}
-            section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {{
-                background-color: #EFF6FF !important;
-                border-color: #93C5FD !important;
+            div[role="radiogroup"] label p,
+            div[role="radiogroup"] label span {{
+                color: var(--text-primary) !important;
+                font-weight: 600 !important;
             }}
-            section[data-testid="stSidebar"] div[role="radiogroup"] label[data-checked="true"],
-            section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {{
-                background-color: #EFF6FF !important;
+            div[role="radiogroup"] label:hover {{
+                background-color: var(--nav-item-hover) !important;
+                border-color: var(--border-hover) !important;
+            }}
+            div[role="radiogroup"] label[data-checked="true"],
+            div[role="radiogroup"] label:has(input:checked) {{
+                background-color: var(--nav-active-bg) !important;
                 border: 1.5px solid #2563EB !important;
                 border-left: 4px solid #2563EB !important;
-                color: #1D4ED8 !important;
-                box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12) !important;
+                color: var(--nav-active-text) !important;
+                box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15) !important;
             }}
-            section[data-testid="stSidebar"] div[data-testid="stExpander"] {{
-                background-color: #F8FAFC !important;
-                border: 1px solid #E2E8F0 !important;
-                box-shadow: none !important;
-            }}
-            section[data-testid="stSidebar"] div[data-baseweb="input"] > div {{
-                background-color: #FFFFFF !important;
-                border-color: #CBD5E1 !important;
-                color: #0F172A !important;
+            div[role="radiogroup"] label:has(input:checked) p,
+            div[role="radiogroup"] label:has(input:checked) span {{
+                color: var(--nav-active-text) !important;
+                font-weight: 700 !important;
             }}
 
-            /* Titres et textes de la zone principale */
+            /* Titres et textes de toutes les pages et onglets */
             h1, h2, h3, h4, h5, h6,
             [data-testid="stMarkdownContainer"] h1,
             [data-testid="stMarkdownContainer"] h2,
@@ -396,59 +411,140 @@ def inject_custom_css(dark_mode: bool = False):
             }}
             [data-testid="stMarkdownContainer"] p,
             [data-testid="stMarkdownContainer"] li,
-            label, .stCaption {{
+            label, .stCaption, [data-testid="stCaptionContainer"] * {{
                 color: var(--text-secondary) !important;
             }}
 
-            /* Champs de saisie, formulaires, sélecteurs, expanders */
+            /* ── ONGLETS (TABS) ET LEUR CONTENU QUAND ON LES OUVRE ── */
+            div[data-testid="stTabs"] {{
+                background: transparent !important;
+            }}
+            div[data-baseweb="tab-list"] {{
+                background-color: var(--bg-card) !important;
+                border: 1px solid var(--border-color) !important;
+                border-radius: 12px !important;
+                padding: 6px 10px !important;
+                margin-bottom: 16px !important;
+                gap: 8px !important;
+                box-shadow: var(--shadow-card) !important;
+            }}
+            button[data-baseweb="tab"] {{
+                background-color: transparent !important;
+                color: var(--text-muted) !important;
+                font-weight: 600 !important;
+                font-size: 14px !important;
+                border-radius: 8px !important;
+                padding: 8px 14px !important;
+            }}
+            button[data-baseweb="tab"] * {{
+                color: var(--text-muted) !important;
+            }}
+            button[data-baseweb="tab"]:hover {{
+                background-color: var(--nav-item-hover) !important;
+            }}
+            button[data-baseweb="tab"][aria-selected="true"] {{
+                background-color: var(--nav-active-bg) !important;
+                color: var(--nav-active-text) !important;
+                font-weight: 700 !important;
+            }}
+            button[data-baseweb="tab"][aria-selected="true"] * {{
+                color: var(--nav-active-text) !important;
+                font-weight: 700 !important;
+            }}
+            div[data-baseweb="tab-panel"] {{
+                background-color: transparent !important;
+                color: var(--text-primary) !important;
+                padding-top: 6px !important;
+            }}
+
+            /* ── EXPANDERS (VOLETS DÉROULANTS QUAND ON LES OUVRE) & FORMULAIRES ── */
             div[data-testid="stForm"],
-            div[data-testid="stExpander"] {{
+            div[data-testid="stExpander"],
+            details {{
                 background-color: var(--bg-card) !important;
                 border: 1px solid var(--border-color) !important;
                 border-radius: 14px !important;
                 box-shadow: var(--shadow-card) !important;
+                color: var(--text-primary) !important;
             }}
-            div[data-testid="stExpander"] details summary {{
+            div[data-testid="stExpander"] details summary,
+            div[data-testid="stExpander"] details summary * {{
+                background-color: var(--bg-card) !important;
                 color: var(--text-primary) !important;
                 font-weight: 600 !important;
+                border-radius: 14px !important;
+            }}
+            div[data-testid="stExpanderDetails"] {{
+                background-color: var(--bg-card) !important;
+                color: var(--text-primary) !important;
+                border-top: 1px solid var(--border-color) !important;
+                border-radius: 0 0 14px 14px !important;
+                padding: 14px !important;
             }}
 
+            /* ── CHAMPS DE SAISIE, TEXTAREAS, SELECTBOX & MENUS DÉROULANTS ── */
             div[data-baseweb="input"] > div,
+            div[data-baseweb="base-input"],
             div[data-baseweb="textarea"] > div,
             div[data-baseweb="select"] > div {{
                 background-color: var(--input-bg) !important;
-                border-color: var(--border-color) !important;
+                border: 1px solid var(--border-color) !important;
                 color: var(--text-primary) !important;
                 border-radius: 10px !important;
             }}
             div[data-baseweb="input"] input,
-            div[data-baseweb="textarea"] textarea {{
+            div[data-baseweb="textarea"] textarea,
+            div[data-baseweb="select"] * {{
                 color: var(--text-primary) !important;
+                background-color: transparent !important;
+            }}
+            div[data-baseweb="popover"] > div,
+            ul[data-baseweb="menu"],
+            ul[data-baseweb="menu"] li {{
+                background-color: var(--bg-card) !important;
+                color: var(--text-primary) !important;
+                border-color: var(--border-color) !important;
+            }}
+            ul[data-baseweb="menu"] li:hover {{
+                background-color: var(--nav-item-hover) !important;
             }}
 
-            /* Zone de drag & drop (File Uploader) */
-            [data-testid="stFileUploader"] section {{
+            /* ── ZONES DE DRAG & DROP (FILE UPLOADER) ET FICHIERS CHARGÉS ── */
+            [data-testid="stFileUploader"] section,
+            [data-testid="stFileUploaderDropzone"] {{
                 background-color: var(--uploader-bg) !important;
                 border: 1.5px dashed var(--border-color) !important;
                 border-radius: 12px !important;
                 padding: 14px !important;
                 transition: all 0.2s ease;
             }}
-            [data-testid="stFileUploader"] section:hover {{
+            [data-testid="stFileUploader"] section:hover,
+            [data-testid="stFileUploaderDropzone"]:hover {{
                 border-color: var(--border-hover) !important;
             }}
-            [data-testid="stFileUploader"] section * {{
+            [data-testid="stFileUploader"] section *,
+            [data-testid="stFileUploaderDropzone"] * {{
                 color: var(--text-secondary) !important;
             }}
-            [data-testid="stFileUploader"] section button {{
+            [data-testid="stFileUploader"] section button,
+            [data-testid="stFileUploaderDropzone"] button {{
                 background-color: var(--bg-card) !important;
                 border: 1px solid var(--border-color) !important;
                 color: var(--text-primary) !important;
                 border-radius: 8px !important;
                 font-weight: 600 !important;
             }}
+            [data-testid="stFileUploaderFile"] {{
+                background-color: var(--bg-card-alt) !important;
+                border: 1px solid var(--border-color) !important;
+                border-radius: 8px !important;
+                color: var(--text-primary) !important;
+            }}
+            [data-testid="stFileUploaderFile"] * {{
+                color: var(--text-primary) !important;
+            }}
 
-            /* Boutons principaux */
+            /* ── BOUTONS ── */
             button[kind="primary"] {{
                 background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
                 color: #FFFFFF !important;
@@ -459,6 +555,9 @@ def inject_custom_css(dark_mode: bool = False):
                 letter-spacing: 0.2px !important;
                 box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35) !important;
                 transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+            }}
+            button[kind="primary"] * {{
+                color: #FFFFFF !important;
             }}
             button[kind="primary"]:hover {{
                 transform: translateY(-1px);
@@ -471,26 +570,11 @@ def inject_custom_css(dark_mode: bool = False):
                 border-radius: 10px !important;
                 font-weight: 600 !important;
             }}
-
-            /* Onglets (Tabs) de navigation principale toujours en mode clair */
-            div[data-baseweb="tab-list"] {{
-                background-color: #FFFFFF !important;
-                border: 1px solid #E2E8F0 !important;
-                border-radius: 12px !important;
-                padding: 4px 8px !important;
-                margin-bottom: 14px !important;
-            }}
-            button[data-baseweb="tab"] {{
-                color: #475569 !important;
-                font-weight: 600 !important;
-                font-size: 14px !important;
-            }}
-            button[data-baseweb="tab"][aria-selected="true"] {{
-                color: #1D4ED8 !important;
-                font-weight: 700 !important;
+            button[kind="secondary"] * {{
+                color: var(--text-primary) !important;
             }}
 
-            /* Composants personnalisés MarketBuilding */
+            /* ── COMPOSANTS PERSONNALISÉS MARKETBUILDING ── */
             .mb-hero {{
                 background: var(--bg-hero);
                 border: 1px solid var(--border-color);
@@ -558,7 +642,7 @@ def inject_custom_css(dark_mode: bool = False):
                 line-height: 1.45;
             }}
 
-            /* Cartes des 5 zones d'upload */
+            /* Cartes des 5 zones d'upload et articles juridiques */
             .mb-zone-header {{
                 background: var(--bg-card);
                 border: 1px solid var(--border-color);
@@ -593,8 +677,8 @@ def inject_custom_css(dark_mode: bool = False):
             }}
             .mb-zone-desc {{
                 color: var(--text-secondary);
-                font-size: 12.8px;
-                line-height: 1.45;
+                font-size: 13px;
+                line-height: 1.6;
                 margin-bottom: 10px;
             }}
             .mb-tag-row {{
@@ -635,7 +719,7 @@ def inject_custom_css(dark_mode: bool = False):
             }}
             .mb-summary-pill.active {{
                 border-color: #10B981;
-                background: rgba(16, 185, 129, 0.08);
+                background: rgba(16, 185, 129, 0.10);
             }}
             .mb-summary-label {{
                 font-size: 11.5px;
@@ -673,13 +757,14 @@ inject_custom_css(st.session_state["dark_mode"])
 
 
 def render_theme_toggle(location_key: str):
-    """Affiche un bouton ON/OFF clair pour activer ou désactiver le Mode Sombre."""
+    """Affiche un bouton ON/OFF clair pour basculer tout le site (navigation + onglets + pages) entre Clair et Sombre."""
     current_dark = st.session_state.get("dark_mode", False)
+    label_mode = "🌙 Mode Sombre : ON" if current_dark else "☀️ Mode Clair (Sombre OFF)"
     new_dark = st.toggle(
-        "🌙 Mode Sombre (ON / OFF)",
+        label_mode,
         value=current_dark,
         key=f"theme_toggle_{location_key}",
-        help="Basculez l'espace de travail entre le Mode Clair (OFF) et le Mode Sombre (ON).",
+        help="Activez (ON) pour passer toute la navigation et tous les onglets en Thème Sombre, ou désactivez (OFF) pour tout passer en Thème Clair.",
     )
     if new_dark != current_dark:
         st.session_state["dark_mode"] = new_dark
@@ -707,7 +792,7 @@ def check_password():
         return True
 
     # Barre supérieure sur l'écran de connexion avec switch Mode Sombre ON/OFF
-    top_col1, top_col2 = st.columns([4, 1.3])
+    top_col1, top_col2 = st.columns([3.6, 1.4])
     with top_col2:
         render_theme_toggle("login")
 
@@ -775,19 +860,20 @@ if not check_password():
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 2. BARRE LATÉRALE – Navigation Principale (Mode Clair) & Accès Propriétaire
+# 2. BARRE LATÉRALE – Navigation Principale (suit le thème Clair / Sombre)
 # ─────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    # Le logo dans la barre latérale est toujours rendu en Mode Clair (dark_mode=False)
-    st.markdown(get_marketbuilding_logo_svg(False), unsafe_allow_html=True)
+    st.markdown(get_marketbuilding_logo_svg(st.session_state["dark_mode"]), unsafe_allow_html=True)
 
-    # Interrupteur Mode Sombre ON/OFF pour l'espace de travail
+    # Interrupteur Mode Clair / Sombre ON/OFF dans la barre latérale
     render_theme_toggle("sidebar")
-    st.caption(f"Affichage : **{'🌙 Mode Sombre (ON)' if st.session_state['dark_mode'] else '☀️ Mode Clair (OFF)'}**")
+    st.caption(
+        f"Thème actif sur tout le site : **{'🌙 Mode Sombre (ON)' if st.session_state['dark_mode'] else '☀️ Mode Clair (OFF)'}**"
+    )
 
     st.divider()
     st.markdown(
-        "<div style='font-size:11.5px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px;'>Navigation Principale</div>",
+        "<div style='font-size:11.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px;'>Navigation Principale</div>",
         unsafe_allow_html=True,
     )
 
@@ -796,7 +882,8 @@ with st.sidebar:
         "Génération": "📄  Générer un Mémoire",
         "Profil": "🏢  Profil Entreprise",
         "Archives": "📂  Archives & Livrables",
-        "CGU": "⚖️  Conditions Générales (CGU)",
+        "CGU": "📜  Conditions Générales (CGU)",
+        "Confidentialité": "🔒  Politique de Confidentialité",
     }
 
     # Accès Propriétaire réservé à l'administrateur (?admin=1 ou déverrouillage propriétaire)
@@ -815,21 +902,21 @@ with st.sidebar:
 
     st.divider()
 
-    # Carte d'état client (sans aucune mention de Moteur IA)
+    # Carte d'état client adaptée au thème Clair / Sombre (sans aucune mention de Moteur IA)
     entreprise_ok = bool(config["entreprise"].get("nom", "").strip())
     os.makedirs("archives", exist_ok=True)
     nb_archives = len([f for f in os.listdir("archives") if f.endswith((".pdf", ".docx"))])
 
     st.markdown(
         f"""
-        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px 14px;">
-            <div style="font-size:11.5px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px;">
+        <div style="background:var(--bg-card-alt); border:1px solid var(--border-color); border-radius:12px; padding:12px 14px;">
+            <div style="font-size:11.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px;">
                 Dossier Entreprise
             </div>
-            <div style="font-size:12.5px; color:#334155; margin-bottom:6px;">
+            <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:6px;">
                 {'🟢' if entreprise_ok else '🔵'} <b>Société :</b> {config['entreprise'].get('nom') or 'Via pièces déposées'}
             </div>
-            <div style="font-size:12.5px; color:#334155;">
+            <div style="font-size:12.5px; color:var(--text-secondary);">
                 📂 <b>Livrables archivés :</b> {nb_archives} fichier(s)
             </div>
         </div>
@@ -841,7 +928,7 @@ with st.sidebar:
     st.caption("MarketBuilding Pro v3.5 · Édition Client BTP")
 
     # Zone discrète réservée uniquement au propriétaire en bas de barre latérale
-    with st.expander("🔒 Accès Propriétaire", expanded=False):
+    with st.expander("🔑 Accès Propriétaire", expanded=False):
         if not is_owner:
             owner_code = st.text_input("Code propriétaire", type="password", key="owner_pin_input", placeholder="Code admin...")
             if owner_code:
@@ -2869,78 +2956,346 @@ elif page == "Vidéos":
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# PAGE : ⚖️ CONDITIONS GÉNÉRALES D'UTILISATION (CGU)
+# PAGE : 📜 CONDITIONS GÉNÉRALES D'UTILISATION (CGU) EN DÉTAIL
 # ─────────────────────────────────────────────────────────────────────────
 elif page == "CGU":
     st.markdown(
         """
         <div class="mb-hero">
-            <div class="mb-hero-badge">⚖️ CADRE CONTRACTUEL & MENTIONS LÉGALES</div>
+            <div class="mb-hero-badge">📜 CADRE JURIDIQUE, CONTRACTUEL & TRANSPARENCE IA</div>
             <div class="mb-hero-title">Conditions Générales d'Utilisation (CGU)</div>
             <p class="mb-hero-sub">
-                Les présentes Conditions Générales d'Utilisation régissent l'accès et l'utilisation de la plateforme <b>MarketBuilding Pro</b> dédiée à l'élaboration de mémoires techniques pour les marchés publics et privés du BTP.
+                Version en vigueur : Octobre 2026 · Les présentes Conditions Générales d'Utilisation régissent en détail l'accès, le fonctionnement et l'utilisation de la plateforme <b>MarketBuilding Pro</b> dédiée à la génération automatisée de mémoires techniques BTP assistée par Intelligence Artificielle.
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    cgu_tab1, cgu_tab2, cgu_tab3 = st.tabs([
+        "📋 Articles 1 à 4 · Objet, Fonctionnement & Intelligence Artificielle (IA)",
+        "⚖️ Articles 5 à 7 · Obligations, Validation Humaine & Propriété Intellectuelle",
+        "🛡️ Articles 8 à 10 · Responsabilité, Disponibilité & Droit Applicable",
+    ])
+
+    with cgu_tab1:
+        st.markdown(
+            """
+            <div class="mb-zone-header" style="border-left:4px solid #2563EB; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 1</span>
+                    <span class="mb-zone-badge">DÉFINITIONS & OBJET DU CONTRAT</span>
+                </div>
+                <div class="mb-zone-title">Article 1 · Définitions et Objet de la Plateforme</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    <b>1.1 Définitions :</b><br>
+                    • <b>« Plateforme » :</b> désigne l'application web professionnelle <b>MarketBuilding Pro</b> dédiée à l'analyse de dossiers d'appels d'offres BTP et à la rédaction assistée de mémoires techniques.<br>
+                    • <b>« Utilisateur » ou « Entreprise Soumissionnaire » :</b> désigne toute personne morale ou physique professionnelle du secteur du Bâtiment, du Génie Civil ou des Travaux Publics (BTP) utilisant la Plateforme.<br>
+                    • <b>« DCE (Dossier de Consultation des Entreprises) » :</b> désigne l'ensemble des pièces d'un marché public ou privé importées par l'Utilisateur (Règlement de Consultation, CCTP, DPGF/DQE, PGC, étude de sol, plan de masse).<br>
+                    • <b>« Livrable » :</b> désigne le projet de Mémoire Technique généré par la Plateforme aux formats PDF et Word (<code>.docx</code>).<br><br>
+                    <b>1.2 Objet :</b> Les présentes Conditions Générales d'Utilisation (CGU) définissent les conditions juridiques et techniques dans lesquelles l'Utilisateur accède à la Plateforme et utilise ses fonctionnalités de génération unitaire ou multi-lots de mémoires techniques. Toute utilisation de la Plateforme implique l'acceptation sans réserve des présentes CGU.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #3B82F6; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 2</span>
+                    <span class="mb-zone-badge">ARCHITECTURE DOCUMENTAIRE EN 5 ZONES</span>
+                </div>
+                <div class="mb-zone-title">Article 2 · Description Détaillée des Fonctionnalités et des Pièces Traitées</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    La Plateforme permet à l'Utilisateur d'importer simultanément et de croiser jusqu'à cinq (5) catégories de documents aux formats PDF, Word (<code>.docx</code>) ou Excel (<code>.xlsx</code>, <code>.xls</code>, <code>.csv</code>) :<br>
+                    1. <b>Le Règlement de Consultation (RC) :</b> extraction des critères et sous-critères de jugement de la « Valeur Technique », du barème de notation, du plan imposé et de la limite de pages.<br>
+                    2. <b>Les Cahiers des Clauses Techniques Particulières (CCTP Général Lot 00 et CCTP des lots techniques) :</b> identification de l'adresse du chantier, des contraintes d'accès et d'horaires, du caractère occupé ou non du site, des matériaux prescrits, des normes (DTU, Eurocodes), des modes opératoires et de la gestion des déchets (SOSED).<br>
+                    3. <b>La DPGF / le DQE (Devis Quantitatif Estimatif) :</b> extraction des quantités exactes (m², m³, ml, unités, forfaits) afin de dimensionner le planning d'exécution, les cadences et les équipes.<br>
+                    4. <b>Les Annexes Chantier (PGC Sécurité, Plan de masse, Étude géotechnique) :</b> prise en compte des risques spécifiques, de la coactivité, du levage, du cantonnement (base vie) et des zones de stockage.<br>
+                    5. <b>Les Documents Internes de l'Entreprise :</b> exploitation de l'organigramme, des CV de l'encadrement, de la liste du personnel et des habilitations sécurité (CACES, AIPR, habilitations électriques, travail en hauteur), du parc matériel, des certifications (Qualibat, RGE, FNTP, ISO) ainsi que des fournisseurs et exutoires déchets habituels.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #F59E0B; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num" style="background:rgba(245,158,11,0.16); color:#F59E0B;">ARTICLE 3 · CLAUSE ESSENTIELLE</span>
+                    <span class="mb-zone-badge">TRANSPARENCE SUR L'INTELLIGENCE ARTIFICIELLE (RÈGLEMENT UE 2024/1689 « AI ACT »)</span>
+                </div>
+                <div class="mb-zone-title">Article 3 · Recours à l'Intelligence Artificielle (IA) Générative et Algorithmique</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    <b>3.1 Information explicite sur l'usage de l'IA :</b> Conformément aux obligations de transparence prévues par le Règlement européen sur l'Intelligence Artificielle (UE 2024/1689 dit « AI Act »), l'Utilisateur est expressément informé et reconnaît que <b>la rédaction, la structuration et le croisement documentaire réalisés par la Plateforme MarketBuilding Pro sont produits par des systèmes d'Intelligence Artificielle (IA) générative et d'analyse sémantique automatisée</b>.<br><br>
+                    <b>3.2 Fonctionnement de l'Intelligence Artificielle :</b><br>
+                    • L'IA extrait le texte brut et les tableaux des documents déposés par l'Utilisateur ;<br>
+                    • L'IA structure le sommaire selon l'ordre exact des critères du Règlement de Consultation (RC) ;<br>
+                    • L'IA fusionne les prescriptions des différents CCTP et croise chaque poste technique avec les quantités de la DPGF et les ressources humaines et matérielles de l'Entreprise.<br><br>
+                    <b>3.3 Limites inhérentes aux technologies d'Intelligence Artificielle :</b> L'Utilisateur reconnaît que tout contenu généré par une Intelligence Artificielle repose sur des modèles probabilistes de traitement du langage naturel. Malgré les consignes de rigueur appliquées au système, l'IA peut occasionnellement produire des formulations incomplètes, des erreurs d'interprétation de tableaux complexes, des omissions ou des imprécisions techniques nécessitant impérativement l'intervention d'un professionnel qualifié du BTP.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #10B981; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 4</span>
+                    <span class="mb-zone-badge">RÈGLE ANTI-INVENTION & MARQUEURS</span>
+                </div>
+                <div class="mb-zone-title">Article 4 · Mécanisme « Anti-Invention » et Balises [À COMPLÉTER]</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    Afin de prévenir le risque d'hallucination documentaire propre aux modèles d'Intelligence Artificielle, la Plateforme applique une règle stricte dite <b>« Anti-Invention »</b> :<br>
+                    • Lorsqu'une donnée propre au chantier ou à l'entreprise (nom d'un conducteur de travaux, distance d'une déchèterie, marque d'un matériau, référence d'un certificat, quantité absente) ne figure dans aucun des fichiers importés ni dans le Profil Entreprise, l'IA a pour instruction formelle de ne pas inventer cette information et d'insérer une balise apparente de type <code>[À COMPLÉTER : préciser ici...]</code>.<br>
+                    • La présence ou l'absence de ces balises constitue une aide visuelle mais ne dispense en aucun cas l'Utilisateur d'un contrôle intégral de la véracité de chaque affirmation contenue dans le Livrable.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with cgu_tab2:
+        st.markdown(
+            """
+            <div class="mb-zone-header" style="border-left:4px solid #10B981; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 5</span>
+                    <span class="mb-zone-badge">CONTRÔLE HUMAIN OBLIGATOIRE</span>
+                </div>
+                <div class="mb-zone-title">Article 5 · Obligation Impérative de Relecture, Complétion et Validation Humaine</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    Les mémoires techniques générés par l'Intelligence Artificielle de la Plateforme constituent exclusivement des <b>projets préparatoires d'aide à la rédaction</b>. Ils n'ont pas valeur d'engagement contractuel automatique.<br><br>
+                    Avant toute signature, exportation finale ou dépôt d'une offre sur un profil d'acheteur public (PLACE, Maximilien, AWS, Mégalis, Chorus Pro, etc.) ou auprès d'un maître d'ouvrage privé, l'Utilisateur a l'obligation absolue de :<br>
+                    1. <b>Relire intégralement</b> l'ensemble des chapitres, tableaux et annexes du mémoire technique généré ;<br>
+                    2. <b>Remplacer toutes les balises</b> <code>[À COMPLÉTER : ...]</code> par les données exactes et vérifiées de son entreprise et du chantier ;<br>
+                    3. <b>Contrôler la conformité technique et réglementaire</b> des méthodes décrites (respect des DTU, Eurocodes, avis techniques CSTB, prescriptions du CCTP et du PGC) ;<br>
+                    4. <b>Vérifier la cohérence arithmétique et opérationnelle</b> entre le mémoire technique, le DPGF/DQE chiffré, le bordereau des prix unitaires (BPU) et le planning d'exécution.<br><br>
+                    L'Entreprise Soumissionnaire assume seule la responsabilité juridique, technique et financière des engagements contenus dans le mémoire technique qu'elle remet au Maître d'Ouvrage.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #2563EB; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 6</span>
+                    <span class="mb-zone-badge">RESPONSABILITÉ DE L'UTILISATEUR</span>
+                </div>
+                <div class="mb-zone-title">Article 6 · Qualité, Licéité et Exactitude des Documents Importés</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    L'Utilisateur garantit détenir l'ensemble des droits et autorisations nécessaires pour importer sur la Plateforme les pièces du DCE ainsi que les documents internes de son entreprise (CV, diplômes, CACES, certificats Qualibat/RGE, références chantiers).<br><br>
+                    L'Utilisateur s'engage à fournir des informations sincères et à jour dans son « Profil Entreprise ». Toute fausse déclaration dans le cadre d'un marché public (notamment sur les effectifs, les qualifications professionnelles ou les certifications) relève de la seule responsabilité pénale et administrative de l'Entreprise Soumissionnaire conformément au Code de la commande publique.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #8B5CF6; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 7</span>
+                    <span class="mb-zone-badge">DROITS D'AUTEUR & LIVRABLES</span>
+                </div>
+                <div class="mb-zone-title">Article 7 · Propriété Intellectuelle</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    <b>7.1 Propriété de la Plateforme :</b> L'architecture logicielle, le code source, l'interface graphique, les modèles de mise en page, les algorithmes d'orchestration et la marque <b>MarketBuilding Pro</b> demeurent la propriété exclusive de l'Éditeur.<br><br>
+                    <b>7.2 Propriété des Documents et Livrables :</b> L'Utilisateur conserve l'entière propriété intellectuelle des fichiers qu'il téléverse sur la Plateforme. Dès leur génération, l'Utilisateur dispose d'un droit d'usage, de modification, de reproduction et de diffusion plein, entier et exclusif sur les Mémoires Techniques (PDF et Word) générés pour les besoins de ses réponses aux appels d'offres.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with cgu_tab3:
+        st.markdown(
+            """
+            <div class="mb-zone-header" style="border-left:4px solid #EF4444; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 8</span>
+                    <span class="mb-zone-badge">GARANTIES & LIMITES DE RESPONSABILITÉ</span>
+                </div>
+                <div class="mb-zone-title">Article 8 · Obligation de Moyens et Limitation de Responsabilité</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    <b>8.1 Obligation de moyens :</b> L'Éditeur fournit un outil technologique d'assistance par Intelligence Artificielle et est soumis à une stricte obligation de moyens. Il ne garantit en aucun cas l'attribution d'un marché public ou privé, ni l'obtention d'une note minimale sur le critère de la « Valeur Technique ».<br><br>
+                    <b>8.2 Exclusion des dommages indirects :</b> En aucun cas l'Éditeur ne pourra être tenu responsable :<br>
+                    • Du rejet d'une offre pour irrégularité, incomplétude ou non-conformité au Règlement de Consultation ;<br>
+                    • D'une perte de chance de remporter un appel d'offres, d'une perte de chiffre d'affaires, de marge ou d'exploitation ;<br>
+                    • De pénalités de retard, de malfaçons, de surcoûts d'exécution ou de litiges avec le Maître d'Ouvrage, le Maître d'Œuvre ou le coordonnateur SPS résultant d'engagements pris dans le mémoire technique sans vérification humaine préalable par l'Utilisateur.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #3B82F6; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 9</span>
+                    <span class="mb-zone-badge">CONTINUITÉ DE SERVICE & SÉCURITÉ</span>
+                </div>
+                <div class="mb-zone-title">Article 9 · Disponibilité du Service et Maintenance</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    La Plateforme est accessible 24h/24 et 7j/7, sous réserve des opérations de maintenance évolutive ou corrective et de la disponibilité des infrastructures réseaux et des moteurs d'Intelligence Artificielle tiers. L'Utilisateur est invité à générer et vérifier ses mémoires techniques avec une marge d'anticipation suffisante avant l'heure limite de remise des plis fixée au Règlement de Consultation.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #2563EB; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 10</span>
+                    <span class="mb-zone-badge">JURIDICTION COMPÉTENTE</span>
+                </div>
+                <div class="mb-zone-title">Article 10 · Modification des CGU, Droit Applicable et Litiges</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    L'Éditeur se réserve le droit d'adapter ou de modifier à tout moment les présentes CGU afin de tenir compte des évolutions législatives (notamment en matière d'Intelligence Artificielle et de commande publique) ou fonctionnelles de la Plateforme.<br><br>
+                    Les présentes CGU sont régies exclusivement par le <b>droit français</b>. En cas de différend relatif à leur interprétation ou à leur exécution, et à défaut de résolution amiable dans un délai de trente (30) jours, compétence expresse est attribuée aux tribunaux compétents du ressort du siège social de l'Éditeur.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# PAGE : 🔒 POLITIQUE DE CONFIDENTIALITÉ & RGPD EN DÉTAIL
+# ─────────────────────────────────────────────────────────────────────────
+elif page == "Confidentialité":
     st.markdown(
         """
-        <div class="mb-zone-header" style="border-left:4px solid #2563EB; margin-bottom:14px;">
-            <div class="mb-zone-title">Article 1 · Objet du Service</div>
-            <div class="mb-zone-desc" style="margin-bottom:0;">
-                La plateforme <b>MarketBuilding Pro</b> met à la disposition des entreprises du Bâtiment et des Travaux Publics (BTP) un outil d'assistance documentaire permettant d'importer les pièces d'un Dossier de Consultation des Entreprises (<i>Règlement de Consultation, CCTP, DPGF/DQE, PGC et annexes chantier</i>) ainsi que les documents internes de l'entreprise candidate afin de générer une proposition de <b>Mémoire Technique</b> structurée aux formats PDF et Word (<code>.docx</code>).
-            </div>
-        </div>
-
-        <div class="mb-zone-header" style="border-left:4px solid #F59E0B; margin-bottom:14px;">
-            <div class="mb-zone-top">
-                <span class="mb-zone-num" style="background:rgba(245,158,11,0.15); color:#F59E0B;">INFORMATION TRANSPARENCE TECHNOLOGIQUE (RÈGLEMENT IA / AI ACT)</span>
-            </div>
-            <div class="mb-zone-title">Article 2 · Recours à l'Intelligence Artificielle (IA)</div>
-            <div class="mb-zone-desc" style="margin-bottom:0;">
-                L'Utilisateur est expressément informé et reconnaît que le fonctionnement de la plateforme <b>MarketBuilding Pro</b> repose sur des <b>systèmes d'Intelligence Artificielle (IA) générative et d'analyse sémantique automatisée</b>.<br><br>
-                • <b>Traitement par Intelligence Artificielle :</b> Les algorithmes d'IA analysent, extraient et croisent automatiquement les données textuelles et chiffrées issues des documents déposés (critères du RC, prescriptions des CCTP, quantités de la DPGF, contraintes du PGC et ressources de l'entreprise) pour rédiger le contenu du mémoire technique.<br>
-                • <b>Règle Anti-Invention et balises <code>[À COMPLÉTER]</code> :</b> Bien que l'IA soit paramétrée avec une consigne stricte lui interdisant d'inventer des données absentes des pièces fournies (en insérant des marqueurs explicites <code>[À COMPLÉTER : préciser ici...]</code>), tout système d'Intelligence Artificielle comporte des limites inhérentes et peut produire des approximations, omissions ou erreurs d'interprétation technique.
-            </div>
-        </div>
-
-        <div class="mb-zone-header" style="border-left:4px solid #10B981; margin-bottom:14px;">
-            <div class="mb-zone-title">Article 3 · Obligation de Relecture et Validation Humaine par l'Utilisateur</div>
-            <div class="mb-zone-desc" style="margin-bottom:0;">
-                Les documents générés par l'Intelligence Artificielle constituent des <b>projets préparatoires d'aide à la rédaction</b> et ne sauraient remplacer l'expertise technique du soumissionnaire.<br><br>
-                Avant toute remise d'offre auprès d'un Maître d'Ouvrage public ou privé, l'Utilisateur s'engage impérativement à :<br>
-                1. <b>Relire intégralement</b> le mémoire technique généré (PDF et Word) ;<br>
-                2. <b>Renseigner toutes les balises</b> <code>[À COMPLÉTER : ...]</code> signalées par le système ;<br>
-                3. <b>Vérifier l'exactitude technique, réglementaire et quantitative</b> (normes DTU, cadences, effectifs, matériel, sécurité PGC, filières déchets SOSED) des engagements pris dans le document final.<br><br>
-                L'entreprise soumissionnaire demeure seule et unique responsable du contenu de l'offre qu'elle dépose dans le cadre d'un marché.
-            </div>
-        </div>
-
-        <div class="mb-zone-header" style="border-left:4px solid #3B82F6; margin-bottom:14px;">
-            <div class="mb-zone-title">Article 4 · Confidentialité des Pièces et Propriété Intellectuelle</div>
-            <div class="mb-zone-desc" style="margin-bottom:0;">
-                • <b>Propriété des documents :</b> L'Utilisateur conserve l'entière propriété intellectuelle des pièces qu'il importe sur la plateforme ainsi que des mémoires techniques générés pour son compte.<br>
-                • <b>Confidentialité :</b> Les pièces de marché (DCE) et les justificatifs d'entreprise (CV, organigrammes, parc matériel, certifications) sont traités de manière strictement confidentielle aux seules fins de générer les livrables demandés par l'Utilisateur.
-            </div>
-        </div>
-
-        <div class="mb-zone-header" style="border-left:4px solid #8B5CF6; margin-bottom:14px;">
-            <div class="mb-zone-title">Article 5 · Limitation de Responsabilité et Droit Applicable</div>
-            <div class="mb-zone-desc" style="margin-bottom:0;">
-                L'éditeur de la plateforme <b>MarketBuilding Pro</b> est tenu à une obligation de moyens dans la fourniture du service d'assistance rédactionnelle par Intelligence Artificielle. Sa responsabilité ne pourra en aucun cas être engagée en cas de rejet d'une candidature ou d'une offre, de perte de chance de remporter un marché, de pénalités d'exécution ou d'inexactitude non corrigée par l'Utilisateur lors de sa relecture.<br><br>
-                Les présentes CGU sont soumises au droit français. L'utilisation de la plateforme vaut acceptation pleine et entière des présentes Conditions Générales d'Utilisation.
-            </div>
+        <div class="mb-hero">
+            <div class="mb-hero-badge">🔒 PROTECTION DES DONNÉES, SECRET DES AFFAIRES & RGPD</div>
+            <div class="mb-hero-title">Politique de Confidentialité & Protection des Données</div>
+            <p class="mb-hero-sub">
+                Version en vigueur : Octobre 2026 · La présente Politique de Confidentialité détaille comment <b>MarketBuilding Pro</b> protège vos dossiers d'appels d'offres (DCE), le secret industriel et commercial de votre entreprise BTP ainsi que les données personnelles conformément au Règlement Général sur la Protection des Données (RGPD - Règlement UE 2016/679) et à la loi Informatique et Libertés.
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-# Pied de page discret rappelant les CGU sur toutes les pages
+    priv_tab1, priv_tab2, priv_tab3 = st.tabs([
+        "🗂️ Articles 1 à 3 · Données Collectées, Finalités & Secret des Affaires",
+        "🤖 Articles 4 à 6 · Traitement par l'IA, Sécurité & Durée de Conservation",
+        "👤 Articles 7 à 8 · Droits RGPD des Utilisateurs, Cookies & Contact CNIL",
+    ])
+
+    with priv_tab1:
+        st.markdown(
+            """
+            <div class="mb-zone-header" style="border-left:4px solid #2563EB; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 1</span>
+                    <span class="mb-zone-badge">RESPONSABLE DU TRAITEMENT</span>
+                </div>
+                <div class="mb-zone-title">Article 1 · Identité et Engagements du Responsable de Traitement</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    Dans le cadre de l'exploitation de la plateforme <b>MarketBuilding Pro</b>, l'Éditeur agit en qualité de :
+                    <br>• <b>Responsable de traitement</b> pour les données de compte et de paramétrage de l'Utilisateur ;
+                    <br>• <b>Sous-traitant au sens de l'article 28 du RGPD</b> pour les documents professionnels et les données à caractère personnel figurant dans les pièces d'appels d'offres (DCE) et les justificatifs d'entreprise importés par l'Utilisateur pour générer ses mémoires techniques.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #3B82F6; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 2</span>
+                    <span class="mb-zone-badge">INVENTAIRE DES DONNÉES TRAITÉES</span>
+                </div>
+                <div class="mb-zone-title">Article 2 · Catégories de Données Collectées et Traitées</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    La Plateforme traite strictement les catégories de données suivantes fournies par l'Utilisateur :<br><br>
+                    <b>2.1 Données d'identification de l'Entreprise (Profil Entreprise) :</b><br>
+                    • Raison sociale, forme juridique, numéro SIRET, adresse du siège social, téléphone, adresse email professionnelle, nom du signataire/dirigeant, assurances décennales et RC Pro, chiffre d'affaires, labels et certifications (Qualibat, RGE, FNTP, Qualifelec, ISO).<br><br>
+                    <b>2.2 Données à caractère personnel relatives aux équipes BTP (Documents Entreprise) :</b><br>
+                    • Noms, prénoms, fonctions, ancienneté, parcours professionnel (CV de conducteurs de travaux, chefs de chantier, compagnons) et titres d'habilitation réglementaire (CACES, AIPR, habilitations électriques, SST, travail en hauteur) présents dans les organigrammes et justificatifs importés.<br><br>
+                    <b>2.3 Données techniques et économiques de marché (Pièces DCE) :</b><br>
+                    • Règlement de Consultation (RC), CCTP, quantitatifs DPGF/DQE, PGC sécurité, études de sol, plans de masse, listes du parc matériel, fiches matériaux et références de chantiers similaires.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #10B981; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 3</span>
+                    <span class="mb-zone-badge">BASES LÉGALES (ART. 6 RGPD)</span>
+                </div>
+                <div class="mb-zone-title">Article 3 · Finalités du Traitement et Bases Juridiques</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    Vos données et documents sont traités exclusivement pour les finalités suivantes :<br>
+                    1. <b>Exécution du service demandé par l'Utilisateur (Article 6.1.b du RGPD) :</b> extraction automatisée du texte des pièces DCE, croisement avec les ressources de l'entreprise et génération des mémoires techniques aux formats PDF et Word.<br>
+                    2. <b>Conservation dans l'espace « Profil Entreprise » et « Archives » (Article 6.1.b du RGPD) :</b> permettre à l'Utilisateur de retrouver ses informations pré-remplies et de retélécharger ses mémoires techniques générés.<br>
+                    3. <b>Sécurité et prévention des abus (Article 6.1.f du RGPD - Intérêt légitime) :</b> protection de l'intégrité technique de la Plateforme.<br><br>
+                    <b>Exclusion totale de prospection et de revente :</b> Aucune donnée importée sur MarketBuilding Pro n'est vendue, louée, cédée ou partagée à des tiers commerciaux, courtiers en données ou entreprises concurrentes.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with priv_tab2:
+        st.markdown(
+            """
+            <div class="mb-zone-header" style="border-left:4px solid #F59E0B; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num" style="background:rgba(245,158,11,0.16); color:#F59E0B;">ARTICLE 4 · CONFIDENTIALITÉ IA & SECRET DES AFFAIRES</span>
+                    <span class="mb-zone-badge">PROTECTION DES MÉTHODES & CHIFFRAGES BTP</span>
+                </div>
+                <div class="mb-zone-title">Article 4 · Encadrement du Traitement par Intelligence Artificielle (IA)</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    La génération du mémoire technique fait appel à des interfaces de programmation (API) professionnelles d'Intelligence Artificielle soumises à des engagements stricts de confidentialité :<br><br>
+                    • <b>Isolation stricte entre entreprises :</b> Les documents déposés par une entreprise (méthodologies propres, DPGF, prix, CV, liste matériel, anciens mémoires techniques) sont traités dans un contexte d'exécution isolé. Ils ne sont <b>jamais</b> accessibles ni réutilisés pour générer les mémoires techniques d'une autre entreprise utilisatrice.<br>
+                    • <b>Absence d'entraînement public sur vos secrets d'affaires :</b> Les appels d'API professionnels utilisés par la Plateforme excluent l'utilisation des documents téléversés par les clients pour entraîner des modèles publics d'Intelligence Artificielle.<br>
+                    • <b>Traitement en mémoire vive lors de l'extraction :</b> L'extraction textuelle des fichiers PDF, Word et Excel importés dans les 5 zones de dépôt s'effectue à la volée en mémoire vive le temps de la génération du livrable.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #2563EB; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 5</span>
+                    <span class="mb-zone-badge">RÉTENTION & PURGE DES DONNÉES</span>
+                </div>
+                <div class="mb-zone-title">Article 5 · Durée de Conservation et Suppression Immédiate</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    • <b>Fichiers DCE téléversés (RC, CCTP, DPGF, PGC, Annexes) :</b> Les fichiers déposés dans les zones d'upload sont traités en mémoire vive pendant la session de génération et sont automatiquement purgés à la fermeture ou au réinitialisation de la session.<br>
+                    • <b>Mémoires générés dans l'onglet « Archives » :</b> Les fichiers PDF et Word générés sont conservés dans le répertoire d'archives de l'Utilisateur afin de permettre leur téléchargement ultérieur. L'Utilisateur peut les <b>supprimer définitivement en un clic</b> à tout moment depuis l'onglet <b>« 🗂️ Archives »</b> via le bouton <i>« 🗑️ Supprimer »</i>.<br>
+                    • <b>Données du « Profil Entreprise » :</b> Conservées tant que l'Utilisateur utilise la Plateforme, et modifiables ou effaçables à tout moment depuis l'onglet <b>« 🏢 Profil Entreprise »</b>.
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #8B5CF6; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 6</span>
+                    <span class="mb-zone-badge">ARTICLE 32 DU RGPD</span>
+                </div>
+                <div class="mb-zone-title">Article 6 · Mesures de Sécurité Techniques et Organisationnelles</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    Conformément à l'article 32 du RGPD et à la protection du secret des affaires (articles L. 151-1 et suivants du Code de commerce), la Plateforme met en œuvre les mesures de sécurité suivantes :<br>
+                    • <b>Chiffrement des communications :</b> Flux chiffrés en transit via les protocoles TLS/HTTPS vers les services d'analyse ;<br>
+                    • <b>Cloisonnement des accès :</b> Séparation stricte entre l'interface Utilisateur et l'espace d'administration système protégé par authentification propriétaire ;<br>
+                    • <b>Contrôle d'intégrité des fichiers :</b> Validation des formats de fichiers autorisés (PDF, DOCX, XLSX, CSV, TXT) lors de l'importation.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with priv_tab3:
+        st.markdown(
+            """
+            <div class="mb-zone-header" style="border-left:4px solid #10B981; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 7</span>
+                    <span class="mb-zone-badge">ARTICLES 15 À 22 DU RGPD</span>
+                </div>
+                <div class="mb-zone-title">Article 7 · Vos Droits sur vos Données Personnelles (RGPD)</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    Conformément au Règlement Général sur la Protection des Données (RGPD) et à la Loi Informatique et Libertés modifiée, toute personne physique dont les données figurent sur la Plateforme dispose des droits suivants :<br><br>
+                    • <b>Droit d'accès (Art. 15 RGPD) :</b> obtenir la confirmation que des données vous concernant sont traitées et en recevoir une copie ;<br>
+                    • <b>Droit de rectification (Art. 16 RGPD) :</b> modifier ou corriger immédiatement toute donnée inexacte ou incomplète (directement via l'onglet <i>« 🏢 Profil Entreprise »</i>) ;<br>
+                    • <b>Droit à l'effacement / « Droit à l'oubli » (Art. 17 RGPD) :</b> supprimer à tout moment vos mémoires archivés depuis l'onglet <i>« 🗂️ Archives »</i> ou demander la suppression intégrale de vos données ;<br>
+                    • <b>Droit à la limitation et d'opposition (Art. 18 et 21 RGPD) :</b> vous opposer au traitement de vos données pour des motifs légitimes ;<br>
+                    • <b>Droit à la portabilité (Art. 20 RGPD) :</b> récupérer vos données et vos livrables dans un format structuré, couramment utilisé et lisible par machine (PDF, DOCX, JSON).
+                </div>
+            </div>
+
+            <div class="mb-zone-header" style="border-left:4px solid #2563EB; margin-bottom:14px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">ARTICLE 8</span>
+                    <span class="mb-zone-badge">COOKIES TECHNIQUES & RECOURS CNIL</span>
+                </div>
+                <div class="mb-zone-title">Article 8 · Cookies Techniques de Session et Réclamation auprès de la CNIL</div>
+                <div class="mb-zone-desc" style="margin-bottom:0;">
+                    <b>8.1 Absence de traceurs publicitaires :</b> La plateforme <b>MarketBuilding Pro</b> n'utilise aucun cookie publicitaire, aucun traceur de ciblage marketing ni aucun outil de profilage commercial tiers. Seuls des cookies techniques strictement nécessaires au fonctionnement de la session d'application et à la mémorisation de votre préférence d'affichage (Mode Clair / Mode Sombre) sont utilisés.<br><br>
+                    <b>8.2 Exercice de vos droits et contact CNIL :</b> Vous pouvez exercer vos droits directement depuis les outils de gestion intégrés à la Plateforme (modification du Profil Entreprise, suppression immédiate dans Archives) ou auprès de l'administrateur de votre espace. Si vous estimez, après nous avoir contactés, que vos droits « Informatique et Libertés » ne sont pas respectés, vous avez la faculté d'introduire une réclamation auprès de l'autorité de contrôle compétente en France : la <b>Commission Nationale de l'Informatique et des Libertés (CNIL)</b> — 3 Place de Fontenoy, TSA 80715, 75334 Paris Cedex 07 (www.cnil.fr).
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+# Pied de page présent sur toutes les pages
 st.markdown(
     "<div style='text-align:center; margin-top:36px; padding-top:14px; border-top:1px solid var(--border-color); color:var(--text-muted); font-size:12px;'>"
-    "MarketBuilding Pro · Plateforme soumise aux <b>Conditions Générales d'Utilisation (CGU)</b> (consultables dans le menu de navigation)."
+    "MarketBuilding Pro · Plateforme soumise aux <b>Conditions Générales d'Utilisation (CGU)</b> et à la <b>Politique de Confidentialité (RGPD)</b> consultables dans le menu principal."
     "</div>",
     unsafe_allow_html=True,
 )
