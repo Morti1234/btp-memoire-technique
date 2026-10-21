@@ -766,6 +766,84 @@ def inject_custom_css(dark_mode: bool = False):
                 text-align: center;
                 box-shadow: var(--shadow-card);
             }}
+
+            /* ── BARRE EXÉCUTIVE SUPÉRIEURE & CARTES KPI (DESIGN PRO B2B) ── */
+            .mb-exec-topbar {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 10px;
+                background: var(--bg-card);
+                border: 1px solid var(--border-color);
+                border-radius: 12px;
+                padding: 10px 16px;
+                margin-bottom: 16px;
+                box-shadow: var(--shadow-card);
+            }}
+            .mb-exec-brand {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 13px;
+                font-weight: 700;
+                color: var(--text-primary);
+            }}
+            .mb-exec-pills {{
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 8px;
+            }}
+            .mb-exec-pill {{
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                background: var(--bg-card-alt);
+                border: 1px solid var(--border-color);
+                border-radius: 999px;
+                padding: 4px 11px;
+                font-size: 11.5px;
+                font-weight: 600;
+                color: var(--text-secondary);
+            }}
+            .mb-kpi-grid {{
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 12px;
+                margin-bottom: 18px;
+            }}
+            @media (max-width: 900px) {{
+                .mb-kpi-grid {{
+                    grid-template-columns: repeat(2, 1fr);
+                }}
+            }}
+            .mb-kpi-card {{
+                background: var(--bg-card);
+                border: 1px solid var(--border-color);
+                border-radius: 14px;
+                padding: 14px 16px;
+                box-shadow: var(--shadow-card);
+            }}
+            .mb-kpi-label {{
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.6px;
+                color: var(--text-muted);
+                margin-bottom: 4px;
+            }}
+            .mb-kpi-val {{
+                font-size: 22px;
+                font-weight: 800;
+                color: var(--text-primary);
+                line-height: 1.2;
+            }}
+            .mb-kpi-sub {{
+                font-size: 11.5px;
+                color: var(--text-secondary);
+                margin-top: 4px;
+            }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -1894,10 +1972,23 @@ PIPELINE_CALLBACKS = {
 ea.ensure_background_imap_worker(PIPELINE_CALLBACKS, load_config)
 
 
+@st.cache_data(show_spinner=False)
+def _build_cached_archives_zip(file_signatures: tuple[tuple[str, float], ...]) -> bytes:
+    """Construit et met en cache le pack .ZIP des archives pour éviter toute latence à l'ouverture de l'onglet Archives."""
+    zip_arch_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_arch_buf, "w", zipfile.ZIP_DEFLATED) as zarch:
+        for fname, _ in file_signatures:
+            fpath = os.path.join("archives", fname)
+            if os.path.exists(fpath):
+                zarch.write(fpath, arcname=fname)
+    return zip_arch_buf.getvalue()
+
+
 def render_interactive_project_viewer(proj: dict, key_prefix: str):
     """
     Permet d'ouvrir, lire, modifier et télécharger (.docx et .pdf) tout mémoire technique
-    synchronisé sur le site (avec badge 'Automatisé via Mail' ou 'Créé sur le site').
+    synchronisé sur le site (avec badge 'Automatisé via Mail' ou 'Créé sur le site'),
+    sans alourdir le DOM par des iframes PDF multiples.
     """
     pid = proj.get("project_id", "proj")
     origin_mail = proj.get("origin") == "email"
@@ -2000,11 +2091,20 @@ def render_interactive_project_viewer(proj: dict, key_prefix: str):
 
     with vt3:
         if pdf_bytes:
-            b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
-            st.markdown(
-                f'<iframe src="data:application/pdf;base64,{b64_pdf}#view=FitH" width="100%" height="680" type="application/pdf"></iframe>',
-                unsafe_allow_html=True,
+            show_pdf_iframe = st.toggle(
+                "👁️ Charger la visionneuse PDF haute définition",
+                value=False,
+                key=f"{key_prefix}_toggle_pdf_{pid}",
+                help="Charge le lecteur PDF uniquement à la demande pour garantir une navigation ultra-fluide sans latence.",
             )
+            if show_pdf_iframe:
+                b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
+                st.markdown(
+                    f'<iframe src="data:application/pdf;base64,{b64_pdf}#view=FitH" width="100%" height="680" type="application/pdf"></iframe>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.info("💡 Activez l'interrupteur ci-dessus pour prévisualiser les pages du PDF directement dans le navigateur, ou cliquez sur **« 📥 Télécharger en PDF »**.")
         else:
             st.info("Aperçu PDF non disponible.")
 
@@ -2021,14 +2121,29 @@ def render_interactive_project_viewer(proj: dict, key_prefix: str):
         else:
             st.success("✅ Aucune balise `[À COMPLÉTER]` restante dans ce mémoire.")
 
+
 # ═══════════════════════════════════════════════════════════════════════
-#  BARRE SUPÉRIEURE GLOBALE (STATUT CLIENT)
+#  BARRE EXÉCUTIVE SUPÉRIEURE (STATUT TEMPS RÉEL BTP)
 # ═══════════════════════════════════════════════════════════════════════
 nom_ent_top = config["entreprise"].get("nom", "").strip() or "Espace Candidat BTP"
+_top_projects = ea.load_projects_db()
+_top_mail_count = sum(1 for p in _top_projects if p.get("origin") == "email")
+_top_watcher_str = "🟢 Écoute Mail Active" if _watcher_on else "⏸️ Écoute Mail en Pause"
 st.markdown(
-    f"<div style='font-size:12.5px; color:var(--text-muted); font-weight:600; padding-top:4px; margin-bottom:6px;'>"
-    f"🏗️ <b>MarketBuilding Pro</b> &nbsp;·&nbsp; {nom_ent_top} &nbsp;·&nbsp; Réponse aux Appels d'Offres Publics & Privés"
-    f"</div>",
+    f"""
+    <div class="mb-exec-topbar">
+        <div class="mb-exec-brand">
+            <span>🏗️ MarketBuilding Pro</span>
+            <span style="color:var(--text-muted); font-weight:500;">|</span>
+            <span style="color:#2563EB;">{nom_ent_top}</span>
+        </div>
+        <div class="mb-exec-pills">
+            <span class="mb-exec-pill">{_top_watcher_str}</span>
+            <span class="mb-exec-pill">📧 {_top_mail_count} Automatisé(s) via Mail</span>
+            <span class="mb-exec-pill">📂 {nb_archives} Livrables (.pdf / .docx)</span>
+        </div>
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
@@ -2265,7 +2380,6 @@ elif page == "Génération":
     _feat_main = vt.featured_video()
     if _feat_main:
         with st.expander("🎬 Démonstration Vidéo : Du dépôt des pièces au téléchargement du Mémoire Technique", expanded=False):
-            st.video(str(_feat_main), autoplay=True, loop=True, muted=True)
             st.markdown(
                 """
                 <div class="mb-steps-grid">
@@ -2285,6 +2399,8 @@ elif page == "Génération":
                 """,
                 unsafe_allow_html=True,
             )
+            if st.toggle("▶️ Charger le lecteur vidéo HD (6,5 Mo)", value=False, key="toggle_hero_demo_video"):
+                st.video(str(_feat_main), autoplay=True, loop=True, muted=True)
 
     ALLOWED_DOC_TYPES = ["pdf", "docx", "xlsx", "xls", "csv"]
 
@@ -2938,7 +3054,7 @@ elif page == "Génération":
                         )
                     with st.expander("📝 Voir le texte rédigé (Markdown)", expanded=False):
                         st.markdown(res["memoire_md"])
-                    with st.expander("👁️ Aperçu du document PDF", expanded=True):
+                    if st.toggle(f"👁️ Afficher l'aperçu PDF intégré ({res['nom_projet'][:28]})", value=False, key=f"batch_pdf_prev_{i}"):
                         b64_pdf = base64.b64encode(res["pdf_bytes"]).decode("utf-8")
                         st.markdown(
                             f'<iframe src="data:application/pdf;base64,{b64_pdf}#view=FitH" width="100%" height="700" type="application/pdf"></iframe>',
@@ -2952,14 +3068,20 @@ elif page == "Génération":
         st.subheader(f"📧 Derniers Mémoires Techniques Automatisés via Mail ({len(email_synced_projects)})")
         st.caption(
             "Ces mémoires ont été générés automatiquement à la réception d'un e-mail. "
-            "Vous pouvez les ouvrir, les lire, les modifier (avec régénération immédiate du `.docx` et du `.pdf`) et les télécharger."
+            "Sélectionnez un dossier ci-dessous pour l'ouvrir, le lire, le modifier (avec régénération immédiate du `.docx` et du `.pdf`) ou le télécharger."
         )
-        for idx_em, em_proj in enumerate(email_synced_projects[:5]):
-            with st.expander(
-                f"📧 [Automatisé via Mail] {em_proj.get('nom_projet', 'Mémoire')} — reçu de {em_proj.get('sender_email', '')} ({em_proj.get('created_at', '')})",
-                expanded=(idx_em == 0 and not results),
-            ):
-                render_interactive_project_viewer(em_proj, key_prefix=f"gen_sync_{idx_em}")
+        selected_em_idx = st.selectbox(
+            "Sélectionner un mémoire automatisé par mail :",
+            options=list(range(min(len(email_synced_projects), 10))),
+            format_func=lambda idx: f"📧 [Automatisé via Mail] {email_synced_projects[idx].get('nom_projet', 'Mémoire')} — de {email_synced_projects[idx].get('sender_email', '')} ({email_synced_projects[idx].get('created_at', '')})",
+            key="gen_sync_select_idx",
+        )
+        em_proj = email_synced_projects[selected_em_idx]
+        with st.expander(
+            f"📧 Ouvrir le dossier : {em_proj.get('nom_projet', 'Mémoire')} ({em_proj.get('created_at', '')})",
+            expanded=(not results),
+        ):
+            render_interactive_project_viewer(em_proj, key_prefix=f"gen_sync_{selected_em_idx}")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -2972,6 +3094,8 @@ elif page == "Automatisation":
     jobs_list = auto_state.get("jobs", [])
     logs_list = auto_state.get("logs", [])
     pending_manual_jobs = [j for j in jobs_list if j.get("statut") == "En attente de validation manuelle"]
+    sent_jobs_count = sum(1 for j in jobs_list if j.get("statut") == "Mémoire envoyé")
+    mail_projects_count = sum(1 for p in ea.load_projects_db() if p.get("origin") == "email")
 
     st.markdown(
         """
@@ -2981,6 +3105,35 @@ elif page == "Automatisation":
             <p class="mb-hero-sub">
                 Surveillance automatique de votre boîte mail (IMAP), décompression des archives <code>.zip</code> DCE, tri intelligent des pièces (RC, CCTP Lot 00 + Lot visé, DPGF, Annexes, Entreprise), génération en temps réel sur le site et réponse automatique par e-mail (SMTP) avec le mémoire <code>.docx</code> et <code>.pdf</code>.
             </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Bandeau KPI Exécutif
+    st.markdown(
+        f"""
+        <div class="mb-kpi-grid">
+            <div class="mb-kpi-card">
+                <div class="mb-kpi-label">📩 Mails DCE Reçus</div>
+                <div class="mb-kpi-val">{len(jobs_list)}</div>
+                <div class="mb-kpi-sub">Dossiers analysés par l'Auto-Triage BTP</div>
+            </div>
+            <div class="mb-kpi-card">
+                <div class="mb-kpi-label">📧 Mémoires sur le Site</div>
+                <div class="mb-kpi-val" style="color:#3B82F6;">{mail_projects_count}</div>
+                <div class="mb-kpi-sub">Synchronisés avec badge « Automatisé via Mail »</div>
+            </div>
+            <div class="mb-kpi-card">
+                <div class="mb-kpi-label">⏳ En Attente Validation</div>
+                <div class="mb-kpi-val" style="color:#F59E0B;">{len(pending_manual_jobs)}</div>
+                <div class="mb-kpi-sub">Prêts à partir en 1 clic (Mode Manuel)</div>
+            </div>
+            <div class="mb-kpi-card">
+                <div class="mb-kpi-label">📤 Réponses Envoyées</div>
+                <div class="mb-kpi-val" style="color:#10B981;">{sent_jobs_count}</div>
+                <div class="mb-kpi-sub">Livrables .docx + .pdf + synthèse vigilance</div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3344,9 +3497,13 @@ elif page == "Automatisation":
         if not mail_projects:
             st.info("Aucun mémoire automatisé via mail pour le moment. Utilisez le bouton **« 🧪 Simuler la réception d'un mail »** ci-dessus pour en générer un.")
         else:
-            for idx_mp, mproj in enumerate(mail_projects):
-                render_interactive_project_viewer(mproj, key_prefix=f"autotab_{idx_mp}")
-                st.divider()
+            sel_mp_idx = st.selectbox(
+                "📂 Sélectionnez le mémoire automatisé à inspecter, modifier ou télécharger :",
+                options=list(range(len(mail_projects))),
+                format_func=lambda idx: f"📧 {mail_projects[idx].get('nom_projet', 'Mémoire')} — de {mail_projects[idx].get('sender_email', '')} ({mail_projects[idx].get('created_at', '')})",
+                key="autotab_select_proj_idx",
+            )
+            render_interactive_project_viewer(mail_projects[sel_mp_idx], key_prefix=f"autotab_{sel_mp_idx}")
 
     with auto_tab3:
         st.markdown("#### ⚙️ Paramètres du Serveur Mail (IMAP & SMTP)")
@@ -3420,9 +3577,16 @@ elif page == "Archives":
         if not synced_projects:
             st.info("Aucun projet synchronisé pour le moment. Générez un mémoire dans « Génération » ou lancez une simulation dans « Automatisation (Mails) ».")
         else:
-            for idx_sp, sproj in enumerate(synced_projects):
-                render_interactive_project_viewer(sproj, key_prefix=f"arch_proj_{idx_sp}")
-                st.divider()
+            sel_sp_idx = st.selectbox(
+                "📂 Sélectionnez un dossier de mémoire technique à ouvrir, modifier ou télécharger :",
+                options=list(range(len(synced_projects))),
+                format_func=lambda idx: (
+                    f"{'📧 [Automatisé via Mail]' if synced_projects[idx].get('origin') == 'email' else '🖥️ [Créé sur le Site]'} "
+                    f"{synced_projects[idx].get('nom_projet', 'Mémoire')} — {synced_projects[idx].get('created_at', '')}"
+                ),
+                key="arch_select_proj_idx",
+            )
+            render_interactive_project_viewer(synced_projects[sel_sp_idx], key_prefix=f"arch_proj_{sel_sp_idx}")
 
     with arch_tab2:
         os.makedirs("archives", exist_ok=True)
@@ -3432,14 +3596,15 @@ elif page == "Archives":
         else:
             fichiers.sort(key=lambda x: os.path.getmtime(os.path.join("archives", x)), reverse=True)
 
-            # Bouton de téléchargement groupé en ZIP
-            zip_arch_buf = io.BytesIO()
-            with zipfile.ZipFile(zip_arch_buf, "w", zipfile.ZIP_DEFLATED) as zarch:
-                for fichier in fichiers:
-                    zarch.write(os.path.join("archives", fichier), arcname=fichier)
+            # Bouton de téléchargement groupé en ZIP (mis en cache via @st.cache_data pour zéro latence)
+            file_sigs = tuple(
+                (f, os.path.getmtime(os.path.join("archives", f)))
+                for f in fichiers
+            )
+            zip_arch_bytes = _build_cached_archives_zip(file_sigs)
             st.download_button(
                 label=f"📦 Tout télécharger en un clic ({len(fichiers)} fichiers .ZIP)",
-                data=zip_arch_buf.getvalue(),
+                data=zip_arch_bytes,
                 file_name=f"Archives_Memoires_Techniques_{datetime.now().strftime('%Y%m%d')}.zip",
                 mime="application/zip",
                 type="primary",
