@@ -501,31 +501,140 @@ def inject_custom_css(dark_mode: bool = False):
                 padding: 14px !important;
             }}
 
-            /* ── CHAMPS DE SAISIE, TEXTAREAS, SELECTBOX & MENUS DÉROULANTS ── */
+            /* ── CHAMPS DE SAISIE, TEXTAREAS, NUMBER INPUTS, SELECTBOX & MENUS DÉROULANTS (STREAMLIT 1.63 + BASEWEB) ── */
+            [data-testid="stTextInputRootElement"],
+            [data-testid="stTextAreaRootElement"],
+            [data-testid="stNumberInputContainer"],
+            [data-testid="stSelectbox"] > div > div,
+            [data-testid="stSelectbox"] div:has(> input),
+            div[data-baseweb="input"],
             div[data-baseweb="input"] > div,
             div[data-baseweb="base-input"],
+            div[data-baseweb="textarea"],
             div[data-baseweb="textarea"] > div,
+            div[data-baseweb="select"],
             div[data-baseweb="select"] > div {{
                 background-color: var(--input-bg) !important;
                 border: 1px solid var(--border-color) !important;
                 color: var(--text-primary) !important;
                 border-radius: 10px !important;
             }}
-            div[data-baseweb="input"] input,
-            div[data-baseweb="textarea"] textarea,
-            div[data-baseweb="select"] * {{
-                color: var(--text-primary) !important;
-                background-color: transparent !important;
+            [data-testid="stTextInputRootElement"]:focus-within,
+            [data-testid="stTextAreaRootElement"]:focus-within,
+            [data-testid="stNumberInputContainer"]:focus-within,
+            [data-testid="stSelectbox"] div:has(> input):focus-within {{
+                border-color: var(--border-hover) !important;
+                box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.20) !important;
             }}
+            [data-testid="stTextInputField"],
+            [data-testid="stTextInput"] input,
+            [data-testid="stTextAreaRootElement"] textarea,
+            [data-testid="stTextArea"] textarea,
+            [data-testid="stNumberInputField"],
+            [data-testid="stNumberInput"] input,
+            [data-testid="stSelectbox"] input,
+            div[data-baseweb="input"] input,
+            div[data-baseweb="base-input"] input,
+            div[data-baseweb="textarea"] textarea,
+            div[data-baseweb="base-input"] textarea,
+            div[data-baseweb="select"] * {{
+                background-color: var(--input-bg) !important;
+                color: var(--text-primary) !important;
+                -webkit-text-fill-color: var(--text-primary) !important;
+                caret-color: var(--text-primary) !important;
+            }}
+            [data-testid="stTextInputField"]::placeholder,
+            [data-testid="stTextInput"] input::placeholder,
+            [data-testid="stTextAreaRootElement"] textarea::placeholder,
+            [data-testid="stTextArea"] textarea::placeholder,
+            [data-testid="stNumberInputField"]::placeholder,
+            [data-testid="stSelectbox"] input::placeholder,
+            div[data-baseweb="input"] input::placeholder,
+            div[data-baseweb="textarea"] textarea::placeholder {{
+                color: var(--text-muted) !important;
+                -webkit-text-fill-color: var(--text-muted) !important;
+                opacity: 0.85 !important;
+            }}
+            /* Correction de l'auto-remplissage navigateur (Brave / Chrome / Safari) */
+            input:-webkit-autofill,
+            input:-webkit-autofill:hover,
+            input:-webkit-autofill:focus,
+            textarea:-webkit-autofill {{
+                -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset !important;
+                -webkit-text-fill-color: var(--text-primary) !important;
+                caret-color: var(--text-primary) !important;
+            }}
+            /* Boutons +/- des champs numériques, bouton œil des mots de passe et flèche Selectbox */
+            [data-testid="stNumberInputStepDown"],
+            [data-testid="stNumberInputStepUp"],
+            [data-testid="stNumberInputClearButton"],
+            [data-testid="stTextInputClearButton"],
+            [data-testid="stTextInputRootElement"] button,
+            [data-testid="stNumberInput"] button,
+            [data-testid="stSelectbox"] button,
+            div[data-baseweb="input"] button {{
+                background-color: transparent !important;
+                color: var(--text-primary) !important;
+            }}
+            [data-testid="stNumberInput"] button svg,
+            [data-testid="stTextInputRootElement"] button svg,
+            [data-testid="stSelectbox"] button svg,
+            div[data-baseweb="input"] button svg {{
+                fill: var(--text-primary) !important;
+                color: var(--text-primary) !important;
+            }}
+            /* Menus déroulants ouverts (Selectbox Virtual Dropdown Streamlit 1.63 + BaseWeb Popover) */
+            [data-testid="stSelectboxVirtualDropdown"],
+            [data-testid="stSelectboxVirtualDropdown"] ul,
+            [data-testid="stSelectboxVirtualDropdown"] li,
+            [role="listbox"],
+            [role="option"],
+            div[data-baseweb="popover"],
             div[data-baseweb="popover"] > div,
+            div[data-baseweb="menu"],
             ul[data-baseweb="menu"],
             ul[data-baseweb="menu"] li {{
                 background-color: var(--bg-card) !important;
                 color: var(--text-primary) !important;
                 border-color: var(--border-color) !important;
             }}
+            [data-testid="stSelectboxVirtualDropdown"] *,
+            [role="option"] *,
+            ul[data-baseweb="menu"] li * {{
+                color: var(--text-primary) !important;
+            }}
+            [data-testid="stSelectboxVirtualDropdown"] [data-hovered],
+            [data-testid="stSelectboxVirtualDropdown"] [data-focused],
+            [role="option"]:hover,
+            [role="option"][aria-selected="true"],
             ul[data-baseweb="menu"] li:hover {{
                 background-color: var(--nav-item-hover) !important;
+            }}
+            /* Labels des champs & instructions (ex: Press Enter to apply) */
+            [data-testid="stWidgetLabel"],
+            [data-testid="stWidgetLabel"] p,
+            [data-testid="stWidgetLabel"] span,
+            [data-testid="InputInstructions"],
+            [data-testid="InputInstructions"] * {{
+                color: var(--text-secondary) !important;
+            }}
+            /* Blocs de code (aperçu des e-mails envoyés, extraits techniques) */
+            [data-testid="stCodeBlock"],
+            [data-testid="stCode"],
+            [data-testid="stCodeBlock"] pre,
+            [data-testid="stCode"] pre,
+            pre {{
+                background-color: var(--input-bg) !important;
+                color: var(--text-primary) !important;
+                border: 1px solid var(--border-color) !important;
+                border-radius: 10px !important;
+            }}
+            [data-testid="stCodeBlock"] code,
+            [data-testid="stCode"] code,
+            pre code {{
+                background-color: transparent !important;
+                color: var(--text-primary) !important;
+                border: none !important;
             }}
 
             /* ── ZONES DE DRAG & DROP (FILE UPLOADER) ET FICHIERS CHARGÉS ── */
