@@ -2125,11 +2125,18 @@ def render_interactive_project_viewer(proj: dict, key_prefix: str):
 
     pdf_path = proj.get("pdf_path", "")
     docx_path = proj.get("docx_path", "")
+    bundle_zip_path = proj.get("bundle_zip_path", "")
     pdf_bytes = Path(pdf_path).read_bytes() if pdf_path and os.path.exists(pdf_path) else b""
     docx_bytes = Path(docx_path).read_bytes() if docx_path and os.path.exists(docx_path) else b""
+    bundle_bytes = Path(bundle_zip_path).read_bytes() if bundle_zip_path and os.path.exists(bundle_zip_path) else b""
     nom_fichier = proj.get("nom_fichier", "Memoire_BTP")
 
-    dl_c1, dl_c2 = st.columns(2)
+    if bundle_bytes:
+        dl_c1, dl_c2, dl_c3 = st.columns(3)
+    else:
+        dl_c1, dl_c2 = st.columns(2)
+        dl_c3 = None
+
     with dl_c1:
         if pdf_bytes:
             st.download_button(
@@ -2150,6 +2157,16 @@ def render_interactive_project_viewer(proj: dict, key_prefix: str):
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True,
                 key=f"{key_prefix}_dl_docx_{pid}",
+            )
+    if dl_c3 is not None and bundle_bytes:
+        with dl_c3:
+            st.download_button(
+                "📦 Dossier Client Assemblé + Mémoires (.ZIP)",
+                data=bundle_bytes,
+                file_name=f"Pack_Dossier_Assemble_et_Memoire_{nom_fichier}.zip",
+                mime="application/zip",
+                use_container_width=True,
+                key=f"{key_prefix}_dl_bundle_{pid}",
             )
 
     vt1, vt2, vt3, vt4 = st.tabs([
@@ -2237,7 +2254,8 @@ def render_interactive_project_viewer(proj: dict, key_prefix: str):
 nom_ent_top = config["entreprise"].get("nom", "").strip() or "Espace Candidat BTP"
 _top_projects = ea.load_projects_db()
 _top_mail_count = sum(1 for p in _top_projects if p.get("origin") == "email")
-_top_watcher_str = "🟢 Écoute Mail Active" if _watcher_on else "⏸️ Écoute Mail en Pause"
+_ref_email_top = (_auto_st.get("imap_user") or ea.DEFAULT_REFERENCE_EMAIL).strip()
+_top_watcher_str = f"🟢 Réception Active : {_ref_email_top}" if _watcher_on else f"⏸️ Réception Pause : {_ref_email_top}"
 st.markdown(
     f"""
     <div class="mb-exec-topbar">
@@ -3237,8 +3255,9 @@ elif page == "Génération":
 # ─────────────────────────────────────────────────────────────────────────
 elif page == "Automatisation":
     auto_state = ea.load_automation_state()
-    watcher_active = bool(auto_state.get("watcher_enabled", False))
+    watcher_active = bool(auto_state.get("watcher_enabled", True))
     current_mode = auto_state.get("automation_mode", "auto")
+    ref_mailbox = (auto_state.get("imap_user") or ea.DEFAULT_REFERENCE_EMAIL).strip()
     jobs_list = auto_state.get("jobs", [])
     logs_list = auto_state.get("logs", [])
     pending_manual_jobs = [j for j in jobs_list if j.get("statut") == "En attente de validation manuelle"]
@@ -3246,12 +3265,14 @@ elif page == "Automatisation":
     mail_projects_count = sum(1 for p in ea.load_projects_db() if p.get("origin") == "email")
 
     st.markdown(
-        """
+        f"""
         <div class="mb-hero">
-            <div class="mb-hero-badge">🤖 PIPELINE AUTOMATISÉ · EMAIL ➔ TRI IA BTP ➔ SITE WEB ➔ EMAIL</div>
-            <div class="mb-hero-title">Panneau de Contrôle · Automatisation des Mails</div>
+            <div class="mb-hero-badge">🤖 PIPELINE AUTOMATISÉ · BOÎTE DE RÉFÉRENCE : {ref_mailbox}</div>
+            <div class="mb-hero-title">Panneau de Contrôle · Automatisation des Mails BTP</div>
             <p class="mb-hero-sub">
-                Surveillance automatique de votre boîte mail (IMAP), décompression des archives <code>.zip</code> DCE, tri intelligent des pièces (RC, CCTP Lot 00 + Lot visé, DPGF, Annexes, Entreprise), génération en temps réel sur le site et réponse automatique par e-mail (SMTP) avec le mémoire <code>.docx</code> et <code>.pdf</code>.
+                Adresse e-mail de référence pour recevoir les dossiers des entreprises de BTP / construction :
+                <b><code>{ref_mailbox}</code></b>.<br>
+                Dès réception d'un mail, le système décompresse les archives <code>.zip</code>, assemble et croise tous les documents ensemble (RC, CCTP Lot 00 + Lot visé, DPGF, Annexes, Entreprise), génère et télécharge automatiquement le Mémoire Technique (<code>.pdf</code> &amp; <code>.docx</code>), puis le renvoie immédiatement au même client expéditeur.
             </p>
         </div>
         """,
@@ -3301,8 +3322,8 @@ elif page == "Automatisation":
                 </div>
                 <div class="mb-zone-title">1. Écoute Boîte Mail (Worker IMAP)</div>
                 <div class="mb-zone-desc" style="margin-bottom:4px;">
-                    Dernière vérification : <b>{auto_state.get('last_check') or 'En attente'}</b><br>
-                    Fréquence : toutes les <b>{auto_state.get('poll_interval_seconds', 30)}s</b>
+                    Boîte de réception : <b><code>{ref_mailbox}</code></b><br>
+                    Dernière vérification : <b>{auto_state.get('last_check') or 'En attente'}</b> · Fréquence : <b>{auto_state.get('poll_interval_seconds', 30)}s</b>
                 </div>
             </div>
             """,
@@ -3588,10 +3609,54 @@ elif page == "Automatisation":
                     st.markdown(steps_html, unsafe_allow_html=True)
 
                     st.markdown(
-                        f"- **Expéditeur :** `{job.get('sender_email', '')}` ({job.get('entreprise_source', '')})\n"
+                        f"- **Boîte de réception de référence :** `{ref_mailbox}`\n"
+                        f"- **Client expéditeur (destinataire du renvoi automatique) :** `{job.get('sender_email', '')}` ({job.get('entreprise_source', '')})\n"
                         f"- **Lot(s) ciblé(s) dans le mail :** `{', '.join(job.get('lots_vises') or ['Non spécifié'])}`\n"
                         f"- **Consignes extraites du mail :** {job.get('consignes_specifiques') or 'Aucune consigne particulière'}"
                     )
+
+                    # Boutons de téléchargement direct des mémoires générés + dossier client assemblé
+                    j_pdf = job.get("pdf_path", "")
+                    j_docx = job.get("docx_path", "")
+                    j_bundle = job.get("bundle_zip_path", "")
+                    has_j_pdf = bool(j_pdf and os.path.exists(j_pdf))
+                    has_j_docx = bool(j_docx and os.path.exists(j_docx))
+                    has_j_bundle = bool(j_bundle and os.path.exists(j_bundle))
+
+                    if has_j_pdf or has_j_docx:
+                        st.markdown("##### 📥 Télécharger les Mémoires Techniques & le Dossier Client Assemblé")
+                        jcol1, jcol2, jcol3 = st.columns(3)
+                        with jcol1:
+                            if has_j_pdf:
+                                st.download_button(
+                                    "📥 Télécharger le Mémoire PDF (.pdf)",
+                                    data=Path(j_pdf).read_bytes(),
+                                    file_name=os.path.basename(j_pdf),
+                                    mime="application/pdf",
+                                    type="primary",
+                                    use_container_width=True,
+                                    key=f"log_dl_pdf_{job['job_id']}_{idx_j}",
+                                )
+                        with jcol2:
+                            if has_j_docx:
+                                st.download_button(
+                                    "📝 Télécharger le Mémoire Word (.docx)",
+                                    data=Path(j_docx).read_bytes(),
+                                    file_name=os.path.basename(j_docx),
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    use_container_width=True,
+                                    key=f"log_dl_docx_{job['job_id']}_{idx_j}",
+                                )
+                        with jcol3:
+                            if has_j_bundle:
+                                st.download_button(
+                                    "📦 Dossier Client Assemblé + Mémoires (.ZIP)",
+                                    data=Path(j_bundle).read_bytes(),
+                                    file_name=os.path.basename(j_bundle),
+                                    mime="application/zip",
+                                    use_container_width=True,
+                                    key=f"log_dl_bundle_{job['job_id']}_{idx_j}",
+                                )
 
                     if job.get("classifications"):
                         st.markdown("##### 🗂️ Résultat du Tri Intelligent des Pièces Jointes (RC / CCTP / DPGF / Annexes / Entreprise)")
@@ -3662,17 +3727,23 @@ elif page == "Automatisation":
         with st.form("form_imap_smtp_config"):
             c_im1, c_im2 = st.columns(2)
             with c_im1:
-                st.markdown("**📥 Réception des mails (IMAP)**")
+                st.markdown("**📥 Réception des mails BTP (IMAP)**")
                 new_imap_host = st.text_input("Serveur IMAP", value=auto_state.get("imap_host", "imap.gmail.com"))
                 new_imap_port = st.number_input("Port IMAP SSL", value=int(auto_state.get("imap_port", 993)), min_value=1, max_value=65535)
-                new_imap_user = st.text_input("Adresse e-mail surveillée (IMAP)", value=auto_state.get("imap_user", ""))
-                new_imap_pass = st.text_input("Mot de passe d'application IMAP", value=auto_state.get("imap_password", ""), type="password")
+                new_imap_user = st.text_input(
+                    "Adresse e-mail de référence (Réception des dossiers BTP)",
+                    value=auto_state.get("imap_user") or ea.DEFAULT_REFERENCE_EMAIL,
+                )
+                new_imap_pass = st.text_input("Mot de passe d'application Gmail (IMAP)", value=auto_state.get("imap_password", ""), type="password")
             with c_im2:
-                st.markdown("**📤 Envoi automatique des réponses (SMTP)**")
+                st.markdown("**📤 Renvoi automatique des mémoires aux clients (SMTP)**")
                 new_smtp_host = st.text_input("Serveur SMTP", value=auto_state.get("smtp_host", "smtp.gmail.com"))
                 new_smtp_port = st.number_input("Port SMTP (587 TLS / 465 SSL)", value=int(auto_state.get("smtp_port", 587)), min_value=1, max_value=65535)
-                new_smtp_user = st.text_input("Utilisateur SMTP", value=auto_state.get("smtp_user", ""))
-                new_smtp_pass = st.text_input("Mot de passe d'application SMTP", value=auto_state.get("smtp_password", ""), type="password")
+                new_smtp_user = st.text_input(
+                    "Adresse e-mail d'expédition (SMTP)",
+                    value=auto_state.get("smtp_user") or ea.DEFAULT_REFERENCE_EMAIL,
+                )
+                new_smtp_pass = st.text_input("Mot de passe d'application Gmail (SMTP)", value=auto_state.get("smtp_password", ""), type="password")
 
             new_poll = st.slider(
                 "Intervalle de vérification automatique de la boîte mail (secondes)",

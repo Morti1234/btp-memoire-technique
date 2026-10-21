@@ -41,6 +41,7 @@ from fpdf import FPDF
 AUTOMATION_DB_PATH = Path("archives") / "automation_state.json"
 PROJECTS_DB_PATH = Path("archives") / "projects_db.json"
 PROFILES_DB_PATH = Path("archives") / "profiles_entreprises.json"
+DEFAULT_REFERENCE_EMAIL = "markethit67000@gmail.com"
 
 _DB_LOCK = threading.RLock()
 _WORKER_THREAD: Optional[threading.Thread] = None
@@ -106,18 +107,19 @@ def load_automation_state() -> dict:
     env_vars = _load_dotenv_if_present()
 
     default_state = {
-        "watcher_enabled": False,
+        "watcher_enabled": True,
         "automation_mode": "auto",  # "auto" (100% Automatique) ou "manual" (Validation Manuelle)
         "poll_interval_seconds": int(env_vars.get("AUTOMATION_POLL_SECONDS", "30") or 30),
+        "reference_email": env_vars.get("IMAP_USER", DEFAULT_REFERENCE_EMAIL) or DEFAULT_REFERENCE_EMAIL,
         "imap_host": env_vars.get("IMAP_HOST", "imap.gmail.com"),
         "imap_port": int(env_vars.get("IMAP_PORT", "993") or 993),
-        "imap_user": env_vars.get("IMAP_USER", ""),
+        "imap_user": env_vars.get("IMAP_USER", DEFAULT_REFERENCE_EMAIL) or DEFAULT_REFERENCE_EMAIL,
         "imap_password": env_vars.get("IMAP_PASSWORD", ""),
         "smtp_host": env_vars.get("SMTP_HOST", "smtp.gmail.com"),
         "smtp_port": int(env_vars.get("SMTP_PORT", "587") or 587),
-        "smtp_user": env_vars.get("SMTP_USER", env_vars.get("IMAP_USER", "")),
+        "smtp_user": env_vars.get("SMTP_USER", env_vars.get("IMAP_USER", DEFAULT_REFERENCE_EMAIL)) or DEFAULT_REFERENCE_EMAIL,
         "smtp_password": env_vars.get("SMTP_PASSWORD", env_vars.get("IMAP_PASSWORD", "")),
-        "smtp_from": env_vars.get("SMTP_FROM", env_vars.get("IMAP_USER", "")),
+        "smtp_from": env_vars.get("SMTP_FROM", env_vars.get("IMAP_USER", DEFAULT_REFERENCE_EMAIL)) or DEFAULT_REFERENCE_EMAIL,
         "last_check": None,
         "last_error": None,
         "jobs": [],
@@ -131,6 +133,14 @@ def load_automation_state() -> dict:
                 for k, v in default_state.items():
                     if k not in saved:
                         saved[k] = v
+                # Toujours garantir que markethit67000@gmail.com est l'email de référence si les champs étaient vides
+                if not (saved.get("imap_user") or "").strip():
+                    saved["imap_user"] = DEFAULT_REFERENCE_EMAIL
+                if not (saved.get("smtp_user") or "").strip():
+                    saved["smtp_user"] = saved["imap_user"] or DEFAULT_REFERENCE_EMAIL
+                if not (saved.get("smtp_from") or "").strip():
+                    saved["smtp_from"] = saved["smtp_user"] or DEFAULT_REFERENCE_EMAIL
+                saved["reference_email"] = saved.get("imap_user") or DEFAULT_REFERENCE_EMAIL
                 # Si .env fournit des identifiants et que saved est vide, compléter
                 for env_k, state_k in [
                     ("IMAP_HOST", "imap_host"),
@@ -908,15 +918,16 @@ def send_smtp_email(
     Si SMTP n'est pas configuré (ex: mode test local sans serveur SMTP), enregistre l'e-mail
     dans le dossier `archives/sent_emails/` et retourne un succès simulé explicite.
     """
-    smtp_host = (state.get("smtp_host") or "").strip()
+    smtp_host = (state.get("smtp_host") or "smtp.gmail.com").strip()
     smtp_port = int(state.get("smtp_port") or 587)
-    smtp_user = (state.get("smtp_user") or "").strip()
+    smtp_user = (state.get("smtp_user") or DEFAULT_REFERENCE_EMAIL).strip()
     smtp_password = (state.get("smtp_password") or "").strip()
-    smtp_from = (state.get("smtp_from") or smtp_user or "automatisation@marketbuilding.pro").strip()
+    smtp_from = (state.get("smtp_from") or smtp_user or DEFAULT_REFERENCE_EMAIL).strip()
 
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = smtp_from
+    msg["From"] = f"MarketBuilding Pro BTP <{smtp_from}>" if "@" in smtp_from and "<" not in smtp_from else smtp_from
+    msg["Reply-To"] = DEFAULT_REFERENCE_EMAIL
     msg["To"] = to_email
     msg.set_content(plain_body)
     msg.add_alternative(html_body, subtype="html")
@@ -1216,6 +1227,37 @@ def process_incoming_email_pipeline(
     with open(docx_path, "wb") as f:
         f.write(docx_bytes)
 
+    # Assembler tous les documents reçus du client + les mémoires générés (.pdf & .docx) dans un dossier client dédié + pack .ZIP
+    client_slug = re.sub(r"[^a-zA-Z0-9_-]", "_", sender_email or "client_btp")[:40]
+    client_dir = os.path.join("archives", "dossiers_clients", f"{client_slug}_{date_str}")
+    os.makedirs(client_dir, exist_ok=True)
+    bundle_zip_path = os.path.join(client_dir, f"Pack_Dossier_Assemble_et_Memoire_{nom_fichier}.zip")
+
+    try:
+        with open(os.path.join(client_dir, f"Memoire_Technique_{nom_fichier}.pdf"), "wb") as f:
+            f.write(pdf_bytes)
+        with open(os.path.join(client_dir, f"Memoire_Technique_{nom_fichier}.docx"), "wb") as f:
+            f.write(docx_bytes)
+
+        with zipfile.ZipFile(bundle_zip_path, "w", zipfile.ZIP_DEFLATED) as zbundle:
+            # 1. Mémoires techniques générés (.pdf et .docx)
+            zbundle.writestr(f"01_MEMOIRES_TECHNIQUES_GENERES/Memoire_Technique_{nom_fichier}.pdf", pdf_bytes)
+            zbundle.writestr(f"01_MEMOIRES_TECHNIQUES_GENERES/Memoire_Technique_{nom_fichier}.docx", docx_bytes)
+            # 2. Documents du client assemblés et triés par catégorie BTP
+            for cat_key, folder_lbl in [
+                ("RC", "02_PIECES_CLIENT_ASSEMBLEES/01_RC"),
+                ("CCTP", "02_PIECES_CLIENT_ASSEMBLEES/02_CCTP_RETENUS"),
+                ("DPGF", "02_PIECES_CLIENT_ASSEMBLEES/03_DPGF_DQE"),
+                ("ANNEXES", "02_PIECES_CLIENT_ASSEMBLEES/04_ANNEXES_CHANTIER"),
+                ("ENTREPRISE", "02_PIECES_CLIENT_ASSEMBLEES/05_DOCS_ENTREPRISE"),
+            ]:
+                for att_obj in cat_files.get(cat_key, []):
+                    zbundle.writestr(f"{folder_lbl}/{att_obj.name}", att_obj.getvalue())
+            # 3. Texte intégral fusionné des documents croisés
+            zbundle.writestr("02_PIECES_CLIENT_ASSEMBLEES/00_DOSSIER_COMPLET_FUSIONNE.txt", full_dossier_text.encode("utf-8"))
+    except Exception:
+        bundle_zip_path = ""
+
     vigilance_points = extract_five_vigilance_points(analyse)
     balises_a_completer = list(dict.fromkeys(re.findall(r"\[À COMPLÉTER[^\]]*\]", memoire_md)))
 
@@ -1226,6 +1268,7 @@ def process_incoming_email_pipeline(
         "created_at": datetime.now().strftime("%d/%m/%Y à %H:%M"),
         "origin": "email",
         "badge": "Automatisé via Mail",
+        "reference_email": DEFAULT_REFERENCE_EMAIL,
         "sender_email": sender_email,
         "email_subject": subject,
         "lots_vises": lots_vises,
@@ -1237,6 +1280,8 @@ def process_incoming_email_pipeline(
         "entreprise": entreprise_profil or config.get("entreprise", {}),
         "pdf_path": pdf_path,
         "docx_path": docx_path,
+        "bundle_zip_path": bundle_zip_path,
+        "client_dir": client_dir,
         "vigilance_points": vigilance_points,
         "balises_a_completer": balises_a_completer,
         "classifications": classifications,
@@ -1256,6 +1301,8 @@ def process_incoming_email_pipeline(
         nom_projet=nom_projet,
         pdf_path=pdf_path,
         docx_path=docx_path,
+        bundle_zip_path=bundle_zip_path,
+        client_dir=client_dir,
         vigilance_points=vigilance_points,
         balises_a_completer=balises_a_completer,
         email_subject_out=reply_subj,
