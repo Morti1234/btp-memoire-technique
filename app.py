@@ -32,6 +32,7 @@ import tempfile
 import zipfile
 
 import video_tools as vt
+import email_automation as ea
 
 # ─────────────────────────────────────────────────────────────────────────
 # 0. PERSISTENCE – Compatible local ET Streamlit Cloud
@@ -908,6 +909,7 @@ with st.sidebar:
     # Navigation accessible à tous (clients et administrateur) en Mode Clair comme en Mode Sombre
     CLIENT_NAV_LABELS = {
         "Génération": "📄  Générer un Mémoire",
+        "Automatisation": "🤖  Automatisation (Mails)",
         "Profil": "🏢  Profil Entreprise",
         "Archives": "📂  Archives & Livrables",
         "CGU": "📜  Conditions Générales (CGU)",
@@ -942,18 +944,24 @@ with st.sidebar:
     entreprise_ok = bool(config["entreprise"].get("nom", "").strip())
     os.makedirs("archives", exist_ok=True)
     nb_archives = len([f for f in os.listdir("archives") if f.endswith((".pdf", ".docx"))])
+    _auto_st = ea.load_automation_state()
+    _watcher_on = bool(_auto_st.get("watcher_enabled", False))
+    _auto_mode_lbl = "100% Auto" if _auto_st.get("automation_mode", "auto") == "auto" else "Validation Manuelle"
 
     st.markdown(
         f"""
         <div style="background:var(--bg-card-alt); border:1px solid var(--border-color); border-radius:12px; padding:12px 14px;">
             <div style="font-size:11.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px;">
-                Dossier Entreprise
+                Dossier Entreprise & Mails
             </div>
             <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:6px;">
                 {'🟢' if entreprise_ok else '🔵'} <b>Société :</b> {config['entreprise'].get('nom') or 'Via pièces déposées'}
             </div>
-            <div style="font-size:12.5px; color:var(--text-secondary);">
+            <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:6px;">
                 📂 <b>Livrables archivés :</b> {nb_archives} fichier(s)
+            </div>
+            <div style="font-size:12.5px; color:var(--text-secondary);">
+                {'🟢' if _watcher_on else '⏸️'} <b>Écoute Mails :</b> {'Active' if _watcher_on else 'En pause'} ({_auto_mode_lbl})
             </div>
         </div>
         """,
@@ -1128,17 +1136,19 @@ def extract_text_from_document(uploaded_file) -> str:
         raise ValueError(f"Format de fichier non supporté ({suffix}) pour « {name} ».")
 
 
-def extract_category_documents(files_list, category_label: str) -> str:
+def extract_category_documents(files_list, category_label: str) -> tuple[str, list[str]]:
     """
     Extrait et concatène un ou plusieurs fichiers d'une même catégorie
     avec des en-têtes clairs indiquant le nom de chaque fichier source.
+    Retourne (texte_concatene, liste_des_logs_par_fichier).
     """
     if not files_list:
-        return ""
+        return "", []
     if not isinstance(files_list, list):
         files_list = [files_list]
 
     extracted_parts: list[str] = []
+    logs: list[str] = []
     for f in files_list:
         if f is None:
             continue
@@ -1146,7 +1156,8 @@ def extract_category_documents(files_list, category_label: str) -> str:
         extracted_parts.append(
             f"================ {category_label.upper()} : {f.name} ================\n{txt}"
         )
-    return "\n\n".join(extracted_parts)
+        logs.append(f"`{f.name}` ({len(txt):,} caractères)")
+    return "\n\n".join(extracted_parts), logs
 
 
 def chunk_text(text: str, max_chars: int = 60_000) -> list[str]:
@@ -1865,6 +1876,151 @@ def generate_pdf(memoire_text: str, analyse_json: dict, entreprise: dict) -> io.
     buffer.seek(0)
     return buffer
 
+
+# ─────────────────────────────────────────────────────────────────────────
+# 8.5 DÉMARRAGE DU WORKER D'ÉCOUTE AUTOMATIQUE DES MAILS & VUE PROJET ÉDITABLE
+# ─────────────────────────────────────────────────────────────────────────
+PIPELINE_CALLBACKS = {
+    "extract_text": extract_text_from_document,
+    "extract_category": extract_category_documents,
+    "analyse_cctp": analyse_cctp,
+    "rediger_memoire": rediger_memoire,
+    "generate_docx": generate_docx,
+    "generate_pdf": generate_pdf,
+    "build_profil_text": build_profil_text,
+    "call_llm": call_llm,
+}
+
+ea.ensure_background_imap_worker(PIPELINE_CALLBACKS, load_config)
+
+
+def render_interactive_project_viewer(proj: dict, key_prefix: str):
+    """
+    Permet d'ouvrir, lire, modifier et télécharger (.docx et .pdf) tout mémoire technique
+    synchronisé sur le site (avec badge 'Automatisé via Mail' ou 'Créé sur le site').
+    """
+    pid = proj.get("project_id", "proj")
+    origin_mail = proj.get("origin") == "email"
+    badge_txt = "📧 Automatisé via Mail" if origin_mail else "🖥️ Créé sur le site"
+    badge_bg = "rgba(139, 92, 246, 0.16)" if origin_mail else "rgba(37, 99, 235, 0.14)"
+    badge_col = "#8B5CF6" if origin_mail else "#2563EB"
+    lots_str = ", ".join(proj.get("lots_vises") or [])
+
+    st.markdown(
+        f"""
+        <div class="mb-zone-header" style="border-left:4px solid {badge_col}; margin-bottom:10px;">
+            <div class="mb-zone-top">
+                <span class="mb-zone-num" style="background:{badge_bg}; color:{badge_col};">{badge_txt}</span>
+                <span class="mb-zone-badge">📅 {proj.get('created_at', '')}</span>
+            </div>
+            <div class="mb-zone-title">{proj.get('nom_projet', 'Mémoire Technique')}</div>
+            <div class="mb-zone-desc" style="margin-bottom:0;">
+                <b>Pièces croisées :</b> <code>{proj.get('source_name', 'Pièces DCE')}</code>
+                {f"<br><b>Expéditeur :</b> <code>{proj.get('sender_email', '')}</code> &nbsp;·&nbsp; <b>Lot(s) :</b> {lots_str or 'Tous lots'}" if origin_mail else ""}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    pdf_path = proj.get("pdf_path", "")
+    docx_path = proj.get("docx_path", "")
+    pdf_bytes = Path(pdf_path).read_bytes() if pdf_path and os.path.exists(pdf_path) else b""
+    docx_bytes = Path(docx_path).read_bytes() if docx_path and os.path.exists(docx_path) else b""
+    nom_fichier = proj.get("nom_fichier", "Memoire_BTP")
+
+    dl_c1, dl_c2 = st.columns(2)
+    with dl_c1:
+        if pdf_bytes:
+            st.download_button(
+                "📥 Télécharger en PDF (.pdf)",
+                data=pdf_bytes,
+                file_name=f"Memoire_Technique_{nom_fichier}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True,
+                key=f"{key_prefix}_dl_pdf_{pid}",
+            )
+    with dl_c2:
+        if docx_bytes:
+            st.download_button(
+                "📝 Télécharger en Word (.docx)",
+                data=docx_bytes,
+                file_name=f"Memoire_Technique_{nom_fichier}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+                key=f"{key_prefix}_dl_docx_{pid}",
+            )
+
+    vt1, vt2, vt3, vt4 = st.tabs([
+        "📖 Lire le Mémoire",
+        "✏️ Modifier & Régénérer (.docx / .pdf)",
+        "👁️ Aperçu PDF",
+        "🔍 5 Points de Vigilance & Balises [À COMPLÉTER]",
+    ])
+
+    with vt1:
+        st.markdown(proj.get("memoire_md", ""))
+
+    with vt2:
+        st.caption(
+            "Modifiez directement le texte du mémoire ci-dessous (ex: remplacez les balises `[À COMPLÉTER : ...]`). "
+            "Cliquez sur **Enregistrer** pour mettre à jour instantanément le fichier **Word (.docx)** et le **PDF (.pdf)** sur le site."
+        )
+        edited_md = st.text_area(
+            "Contenu du Mémoire Technique (Markdown)",
+            value=proj.get("memoire_md", ""),
+            height=420,
+            key=f"{key_prefix}_edit_md_{pid}",
+        )
+        if st.button(
+            "💾 Enregistrer les modifications & Régénérer Word (.docx) et PDF (.pdf)",
+            type="primary",
+            use_container_width=True,
+            key=f"{key_prefix}_save_md_{pid}",
+        ):
+            ent_dict = proj.get("entreprise") or config.get("entreprise", {})
+            analyse_dict = proj.get("analyse") or {"nom_projet": proj.get("nom_projet", "Projet BTP")}
+            new_docx = generate_docx(edited_md, analyse_dict, ent_dict).getvalue()
+            new_pdf = generate_pdf(edited_md, analyse_dict, ent_dict).getvalue()
+            if pdf_path:
+                with open(pdf_path, "wb") as f:
+                    f.write(new_pdf)
+            if docx_path:
+                with open(docx_path, "wb") as f:
+                    f.write(new_docx)
+            new_balises = list(dict.fromkeys(re.findall(r"\[À COMPLÉTER[^\]]*\]", edited_md)))
+            proj["memoire_md"] = edited_md
+            proj["balises_a_completer"] = new_balises
+            ea.save_project_to_db(proj)
+            if proj.get("job_id"):
+                ea.update_job_status(proj["job_id"], balises_a_completer=new_balises)
+            st.success("✅ Mémoire modifié ! Les fichiers PDF et Word (.docx) ont été régénérés et synchronisés.")
+            st.rerun()
+
+    with vt3:
+        if pdf_bytes:
+            b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
+            st.markdown(
+                f'<iframe src="data:application/pdf;base64,{b64_pdf}#view=FitH" width="100%" height="680" type="application/pdf"></iframe>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("Aperçu PDF non disponible.")
+
+    with vt4:
+        vig_pts = proj.get("vigilance_points") or ea.extract_five_vigilance_points(proj.get("analyse") or {})
+        st.markdown("#### 🛡️ Les 5 Points de Vigilance Majeurs du Chantier (RC & CCTP)")
+        for vp in vig_pts:
+            st.markdown(f"- **{vp['titre']}** : {vp['detail']}")
+        balises = proj.get("balises_a_completer") or list(dict.fromkeys(re.findall(r"\[À COMPLÉTER[^\]]*\]", proj.get("memoire_md", ""))))
+        st.markdown(f"#### ⚠️ Balises `[À COMPLÉTER]` restantes ({len(balises)})")
+        if balises:
+            for b in balises:
+                st.markdown(f"- `{b}`")
+        else:
+            st.success("✅ Aucune balise `[À COMPLÉTER]` restante dans ce mémoire.")
+
 # ═══════════════════════════════════════════════════════════════════════
 #  BARRE SUPÉRIEURE GLOBALE (STATUT CLIENT)
 # ═══════════════════════════════════════════════════════════════════════
@@ -2484,10 +2640,29 @@ elif page == "Génération":
             pdf_bytes = pdf_buffer.getvalue()
             docx_bytes = docx_buffer.getvalue()
 
-            with open(f"archives/Memoire_{nom_fichier}_{date_str}.pdf", "wb") as f:
+            pdf_path_saved = f"archives/Memoire_{nom_fichier}_{date_str}.pdf"
+            docx_path_saved = f"archives/Memoire_{nom_fichier}_{date_str}.docx"
+            with open(pdf_path_saved, "wb") as f:
                 f.write(pdf_bytes)
-            with open(f"archives/Memoire_{nom_fichier}_{date_str}.docx", "wb") as f:
+            with open(docx_path_saved, "wb") as f:
                 f.write(docx_bytes)
+
+            ea.save_project_to_db({
+                "project_id": f"site_{date_str}",
+                "created_at": datetime.now().strftime("%d/%m/%Y à %H:%M"),
+                "origin": "site",
+                "badge": "Créé sur le site",
+                "nom_projet": nom_projet,
+                "nom_fichier": nom_fichier,
+                "source_name": ", ".join(source_filenames),
+                "analyse": analyse,
+                "memoire_md": memoire_md,
+                "entreprise": config["entreprise"],
+                "pdf_path": pdf_path_saved,
+                "docx_path": docx_path_saved,
+                "vigilance_points": ea.extract_five_vigilance_points(analyse),
+                "balises_a_completer": list(dict.fromkeys(re.findall(r"\[À COMPLÉTER[^\]]*\]", memoire_md))),
+            })
 
             st.session_state["generated_results"] = [{
                 "source_name": ", ".join(source_filenames),
@@ -2602,10 +2777,29 @@ elif page == "Génération":
                 pdf_bytes = pdf_buffer.getvalue()
                 docx_bytes = docx_buffer.getvalue()
 
-                with open(f"archives/Memoire_{nom_fichier}_{date_str}.pdf", "wb") as f:
+                pdf_batch_path = f"archives/Memoire_{nom_fichier}_{date_str}.pdf"
+                docx_batch_path = f"archives/Memoire_{nom_fichier}_{date_str}.docx"
+                with open(pdf_batch_path, "wb") as f:
                     f.write(pdf_bytes)
-                with open(f"archives/Memoire_{nom_fichier}_{date_str}.docx", "wb") as f:
+                with open(docx_batch_path, "wb") as f:
                     f.write(docx_bytes)
+
+                ea.save_project_to_db({
+                    "project_id": f"batch_{date_str}_{idx}",
+                    "created_at": datetime.now().strftime("%d/%m/%Y à %H:%M"),
+                    "origin": "site",
+                    "badge": "Créé sur le site",
+                    "nom_projet": nom_projet,
+                    "nom_fichier": nom_fichier,
+                    "source_name": cctp_file.name,
+                    "analyse": analyse,
+                    "memoire_md": memoire_md,
+                    "entreprise": config["entreprise"],
+                    "pdf_path": pdf_batch_path,
+                    "docx_path": docx_batch_path,
+                    "vigilance_points": ea.extract_five_vigilance_points(analyse),
+                    "balises_a_completer": list(dict.fromkeys(re.findall(r"\[À COMPLÉTER[^\]]*\]", memoire_md))),
+                })
 
                 batch_results.append({
                     "source_name": cctp_file.name,
@@ -2751,6 +2945,453 @@ elif page == "Génération":
                             unsafe_allow_html=True,
                         )
 
+    # ── Synchronisation en temps réel des projets "Automatisé via Mail" sur la page principale ──
+    email_synced_projects = [p for p in ea.load_projects_db() if p.get("origin") == "email"]
+    if email_synced_projects:
+        st.divider()
+        st.subheader(f"📧 Derniers Mémoires Techniques Automatisés via Mail ({len(email_synced_projects)})")
+        st.caption(
+            "Ces mémoires ont été générés automatiquement à la réception d'un e-mail. "
+            "Vous pouvez les ouvrir, les lire, les modifier (avec régénération immédiate du `.docx` et du `.pdf`) et les télécharger."
+        )
+        for idx_em, em_proj in enumerate(email_synced_projects[:5]):
+            with st.expander(
+                f"📧 [Automatisé via Mail] {em_proj.get('nom_projet', 'Mémoire')} — reçu de {em_proj.get('sender_email', '')} ({em_proj.get('created_at', '')})",
+                expanded=(idx_em == 0 and not results),
+            ):
+                render_interactive_project_viewer(em_proj, key_prefix=f"gen_sync_{idx_em}")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# PAGE : 🤖 AUTOMATISATION (PIPELINE EMAIL -> SITE WEB -> EMAIL)
+# ─────────────────────────────────────────────────────────────────────────
+elif page == "Automatisation":
+    auto_state = ea.load_automation_state()
+    watcher_active = bool(auto_state.get("watcher_enabled", False))
+    current_mode = auto_state.get("automation_mode", "auto")
+    jobs_list = auto_state.get("jobs", [])
+    logs_list = auto_state.get("logs", [])
+    pending_manual_jobs = [j for j in jobs_list if j.get("statut") == "En attente de validation manuelle"]
+
+    st.markdown(
+        """
+        <div class="mb-hero">
+            <div class="mb-hero-badge">🤖 PIPELINE AUTOMATISÉ · EMAIL ➔ TRI IA BTP ➔ SITE WEB ➔ EMAIL</div>
+            <div class="mb-hero-title">Panneau de Contrôle · Automatisation des Mails</div>
+            <p class="mb-hero-sub">
+                Surveillance automatique de votre boîte mail (IMAP), décompression des archives <code>.zip</code> DCE, tri intelligent des pièces (RC, CCTP Lot 00 + Lot visé, DPGF, Annexes, Entreprise), génération en temps réel sur le site et réponse automatique par e-mail (SMTP) avec le mémoire <code>.docx</code> et <code>.pdf</code>.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── 1. BARRE DE CONTRÔLE PRINCIPALE : ACTIVER/PAUSE, MODE & SIMULATEUR ──
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([1.35, 1.55, 1.3], gap="medium")
+
+    with ctrl_col1:
+        status_color = "#10B981" if watcher_active else "#F59E0B"
+        status_label = "🟢 SURVEILLANCE ACTIVE" if watcher_active else "⏸️ SURVEILLANCE EN PAUSE"
+        st.markdown(
+            f"""
+            <div class="mb-zone-header" style="border-left:4px solid {status_color}; margin-bottom:10px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num" style="background:rgba(16,185,129,0.14); color:{status_color};">{status_label}</span>
+                </div>
+                <div class="mb-zone-title">1. Écoute Boîte Mail (Worker IMAP)</div>
+                <div class="mb-zone-desc" style="margin-bottom:4px;">
+                    Dernière vérification : <b>{auto_state.get('last_check') or 'En attente'}</b><br>
+                    Fréquence : toutes les <b>{auto_state.get('poll_interval_seconds', 30)}s</b>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        btn_toggle_label = "⏸️ Mettre en pause la surveillance des mails" if watcher_active else "▶️ Activer la surveillance automatique des mails"
+        if st.button(btn_toggle_label, type="primary" if not watcher_active else "secondary", use_container_width=True, key="btn_toggle_watcher"):
+            auto_state["watcher_enabled"] = not watcher_active
+            ea.save_automation_state(auto_state)
+            ea.add_automation_log(
+                "Surveillance activée" if not watcher_active else "Surveillance en pause",
+                "L'écoute automatique IMAP en arrière-plan a été " + ("activée." if not watcher_active else "mise en pause."),
+            )
+            st.rerun()
+
+        if st.button("🔄 Vérifier la boîte mail maintenant (IMAP)", use_container_width=True, key="btn_poll_imap_now"):
+            with st.spinner("Connexion IMAP et recherche de nouveaux mails non lus…"):
+                nb_proc, err_imap = ea.poll_imap_inbox_once(PIPELINE_CALLBACKS, load_config)
+            if err_imap:
+                st.warning(f"ℹ️ {err_imap}")
+            elif nb_proc > 0:
+                st.success(f"✅ {nb_proc} nouveau(x) mail(s) traité(s) avec succès !")
+            else:
+                st.info("📭 Aucun nouvel e-mail non lu dans la boîte de réception.")
+            st.rerun()
+
+    with ctrl_col2:
+        st.markdown(
+            """
+            <div class="mb-zone-header" style="border-left:4px solid #2563EB; margin-bottom:10px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num">MODE D'EXPÉDITION</span>
+                </div>
+                <div class="mb-zone-title">2. Sélecteur de Mode d'Automatisation</div>
+                <div class="mb-zone-desc" style="margin-bottom:4px;">
+                    Choisissez si l'e-mail de réponse part immédiatement ou après votre validation sur le site.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        mode_options = ["auto", "manual"]
+        mode_labels = {
+            "auto": "⚡ Mode 100 % Automatique (Génère sur le site & renvoie le mail tout seul)",
+            "manual": "👁️ Mode Validation Manuelle (Génère sur le site & attend « Valider et Envoyer »)",
+        }
+        selected_mode = st.radio(
+            "Mode d'automatisation",
+            options=mode_options,
+            index=0 if current_mode == "auto" else 1,
+            format_func=lambda k: mode_labels[k],
+            key="radio_automation_mode",
+            label_visibility="collapsed",
+        )
+        if selected_mode != current_mode:
+            auto_state["automation_mode"] = selected_mode
+            ea.save_automation_state(auto_state)
+            ea.add_automation_log(
+                "Changement de mode",
+                f"Mode d'automatisation basculé sur : {mode_labels[selected_mode]}",
+            )
+            st.rerun()
+
+    with ctrl_col3:
+        st.markdown(
+            """
+            <div class="mb-zone-header" style="border-left:4px solid #8B5CF6; margin-bottom:10px;">
+                <div class="mb-zone-top">
+                    <span class="mb-zone-num" style="background:rgba(139,92,246,0.15); color:#8B5CF6;">TEST EN 1 CLIC</span>
+                </div>
+                <div class="mb-zone-title">3. Simuler la réception d'un mail</div>
+                <div class="mb-zone-desc" style="margin-bottom:4px;">
+                    Testez tout le circuit (ZIP DCE multi-lots ➔ Tri CCTP ➔ Site ➔ Mail) directement depuis l'interface.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button(
+            "🧪 Simuler la réception d'un mail (DCE .ZIP complet)",
+            type="primary",
+            use_container_width=True,
+            key="btn_simulate_email_1click",
+        ):
+            with st.status("📨 Simulation de la réception d'un e-mail client BTP avec dossier DCE .ZIP…", expanded=True) as sim_status:
+                st.write("1️⃣ **Mail reçu** de `contact@durand-tp-vrd.fr` — Objet : *Demande de mémoire technique - Groupe Scolaire Jean Moulin (Lot 02 VRD)*")
+                zip_fname, zip_bytes = ea.build_realistic_dce_zip_simulation()
+                st.write(f"2️⃣ **Décompression automatique du fichier `{zip_fname}`** et **Tri intelligent des CCTP** (Lot 00 Général + Lot 02 VRD retenus, Lot 01 Gros Œuvre écarté)…")
+                sim_body = (
+                    "Bonjour,\n\n"
+                    "Veuillez trouver ci-joint le dossier DCE complet en .zip pour le marché de réhabilitation "
+                    "du Groupe Scolaire Jean Moulin à Lyon 3e.\n"
+                    "Nous répondons uniquement sur le Lot 02 VRD & Aménagements Extérieurs (cour d'école perméable).\n"
+                    "Consignes spécifiques : bien mettre en avant notre équipe certifiée AIPR et CACES R482, "
+                    "l'interdiction de livraison aux heures d'entrée/sortie des élèves (8h00-8h45 et 16h15-17h00), "
+                    "et notre exutoire de recyclage Valomat Vénissieux à 5,5 km.\n\n"
+                    "Bien cordialement,\nMarc Durand — DURAND TP & VRD"
+                )
+                st.write("3️⃣ **Génération du Mémoire Technique (.docx & .pdf)** et **Synchronisation sur le site** (badge `Automatisé via Mail`)…")
+                job_res = ea.process_incoming_email_pipeline(
+                    sender_email="contact@durand-tp-vrd.fr",
+                    sender_name="Marc Durand (DURAND TP & VRD)",
+                    subject="Demande de mémoire technique - Groupe Scolaire Jean Moulin (Lot 02 VRD)",
+                    body_text=sim_body,
+                    raw_attachments=[(zip_fname, zip_bytes)],
+                    config=config,
+                    extract_text_fn=extract_text_from_document,
+                    extract_category_fn=extract_category_documents,
+                    analyse_cctp_fn=analyse_cctp,
+                    rediger_memoire_fn=rediger_memoire,
+                    generate_docx_fn=generate_docx,
+                    generate_pdf_fn=generate_pdf,
+                    build_profil_text_fn=build_profil_text,
+                    call_llm_fn=call_llm,
+                    is_simulation=True,
+                )
+                sim_status.update(
+                    label=f"✅ Circuit terminé — Statut : {job_res.get('statut', 'Terminé')} (Projet : {job_res.get('nom_projet', '')})",
+                    state="complete",
+                )
+            st.rerun()
+
+    # ── Volet optionnel : Simulation personnalisée ou test "Pièce manquante (sans CCTP)" ──
+    with st.expander("🛠️ Personnaliser la simulation d'e-mail (avec vos propres fichiers .zip / .pdf / .docx / .xlsx ou tester le cas « Sans CCTP »)", expanded=False):
+        sim_c1, sim_c2 = st.columns(2)
+        with sim_c1:
+            custom_sender = st.text_input("Adresse e-mail de l'expéditeur simulé", value="etudes@entreprise-btp.fr", key="sim_custom_sender")
+            custom_subject = st.text_input("Objet de l'e-mail", value="DCE Appel d'offres - Lot 02 VRD", key="sim_custom_subject")
+        with sim_c2:
+            custom_body = st.text_area(
+                "Corps du mail (précisez le lot visé et vos consignes spécifiques)",
+                value="Bonjour, nous souhaitons répondre au Lot 02 VRD. Merci de croiser le RC, le CCTP Lot 00, le CCTP Lot 02 et notre DPGF.",
+                height=105,
+                key="sim_custom_body",
+            )
+        custom_files = st.file_uploader(
+            "Pièces jointes du mail simulé (archive .zip DCE, ou fichiers PDF, Word, Excel en vrac — laissez vide pour utiliser le pack DCE .zip de démonstration)",
+            type=["zip", "pdf", "docx", "xlsx", "xls", "csv", "txt"],
+            accept_multiple_files=True,
+            key="sim_custom_files",
+        )
+        b_col1, b_col2 = st.columns(2)
+        with b_col1:
+            if st.button("🚀 Lancer la simulation avec ces paramètres", type="primary", use_container_width=True, key="btn_run_custom_sim"):
+                if custom_files:
+                    raw_att_list = [(f.name, f.getvalue()) for f in custom_files]
+                else:
+                    zname, zbytes = ea.build_realistic_dce_zip_simulation()
+                    raw_att_list = [(zname, zbytes)]
+                with st.spinner("Exécution du pipeline complet (Décompression ➔ Auto-Triage ➔ Génération ➔ Site ➔ Mail)…"):
+                    ea.process_incoming_email_pipeline(
+                        sender_email=custom_sender,
+                        sender_name=custom_sender.split("@")[0],
+                        subject=custom_subject,
+                        body_text=custom_body,
+                        raw_attachments=raw_att_list,
+                        config=config,
+                        extract_text_fn=extract_text_from_document,
+                        extract_category_fn=extract_category_documents,
+                        analyse_cctp_fn=analyse_cctp,
+                        rediger_memoire_fn=rediger_memoire,
+                        generate_docx_fn=generate_docx,
+                        generate_pdf_fn=generate_pdf,
+                        build_profil_text_fn=build_profil_text,
+                        call_llm_fn=call_llm,
+                        is_simulation=True,
+                    )
+                st.rerun()
+        with b_col2:
+            if st.button("⚠️ Tester le cas « Mail reçu sans CCTP (Pièce manquante) »", use_container_width=True, key="btn_sim_missing_cctp"):
+                with st.spinner("Simulation d'un e-mail incomplet (sans CCTP)…"):
+                    ea.process_incoming_email_pipeline(
+                        sender_email=custom_sender,
+                        sender_name=custom_sender.split("@")[0],
+                        subject="Demande de mémoire technique (Dossier incomplet sans CCTP)",
+                        body_text="Bonjour, pouvez-vous nous rédiger le mémoire technique pour ce chantier ?",
+                        raw_attachments=[],
+                        config=config,
+                        extract_text_fn=extract_text_from_document,
+                        extract_category_fn=extract_category_documents,
+                        analyse_cctp_fn=analyse_cctp,
+                        rediger_memoire_fn=rediger_memoire,
+                        generate_docx_fn=generate_docx,
+                        generate_pdf_fn=generate_pdf,
+                        build_profil_text_fn=build_profil_text,
+                        call_llm_fn=call_llm,
+                        is_simulation=True,
+                    )
+                st.rerun()
+
+    # ── 2. FILE D'ATTENTE DE VALIDATION MANUELLE (SI MODE VALIDATION MANUELLE) ──
+    if pending_manual_jobs:
+        st.divider()
+        st.subheader(f"⏳ Mémoire(s) en attente de votre validation avant envoi du mail ({len(pending_manual_jobs)})")
+        for pjob in pending_manual_jobs:
+            jid = pjob["job_id"]
+            st.markdown(
+                f"""
+                <div class="mb-zone-header" style="border-left:4px solid #F59E0B; margin-bottom:10px;">
+                    <div class="mb-zone-top">
+                        <span class="mb-zone-num" style="background:rgba(245,158,11,0.16); color:#F59E0B;">⏳ EN ATTENTE DE VALIDATION MANUELLE</span>
+                        <span class="mb-zone-badge">Reçu le {pjob.get('received_at', '')}</span>
+                    </div>
+                    <div class="mb-zone-title">{pjob.get('nom_projet', pjob.get('subject', ''))}</div>
+                    <div class="mb-zone-desc" style="margin-bottom:0;">
+                        <b>Destinataire de la réponse :</b> <code>{pjob.get('sender_email', '')}</code> &nbsp;·&nbsp;
+                        <b>Lot(s) traité(s) :</b> {', '.join(pjob.get('lots_vises') or ['Tous lots'])}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                f"✅ Valider et Envoyer le Mémoire (.docx + .pdf) par mail à {pjob.get('sender_email', '')}",
+                type="primary",
+                use_container_width=True,
+                key=f"btn_approve_send_{jid}",
+            ):
+                ok_send, msg_send = ea.approve_and_send_manual_job(jid)
+                if ok_send:
+                    st.success(f"✅ {msg_send}")
+                else:
+                    st.error(f"❌ {msg_send}")
+                st.rerun()
+
+    st.divider()
+
+    # ── 3. ONGLETS DU PANNEAU D'AUTOMATISATION : JOURNAL EN DIRECT, MÉMOIRES AUTOMATISÉS & CONFIG IMAP/SMTP ──
+    auto_tab1, auto_tab2, auto_tab3 = st.tabs([
+        f"📡 Journal en Direct (Logs & Statuts des Mails — {len(jobs_list)} dossier(s))",
+        "📧 Mémoires « Automatisé via Mail » (Ouvrir, Lire, Modifier & Télécharger)",
+        "⚙️ Configuration Boîte Mail (IMAP / SMTP / .env)",
+    ])
+
+    with auto_tab1:
+        st.markdown("#### 📡 Suivi en direct des e-mails reçus et traités")
+        if not jobs_list:
+            st.info(
+                "Aucun e-mail reçu pour le moment. Cliquez sur **« 🧪 Simuler la réception d'un mail (DCE .ZIP complet) »** "
+                "ci-dessus pour tester immédiatement toute la chaîne d'automatisation !"
+            )
+        else:
+            for idx_j, job in enumerate(jobs_list):
+                st_str = job.get("statut", "Mail reçu")
+                if st_str == "Mémoire envoyé":
+                    st_col = "#10B981"
+                    st_icon = "✅"
+                elif st_str == "En attente de validation manuelle":
+                    st_col = "#F59E0B"
+                    st_icon = "⏳"
+                elif "Pièce manquante" in st_str:
+                    st_col = "#EF4444"
+                    st_icon = "⚠️"
+                else:
+                    st_col = "#3B82F6"
+                    st_icon = "🔄"
+
+                with st.expander(
+                    f"{st_icon} [{st_str}] {job.get('subject', 'Sans objet')} — de {job.get('sender_email', '')} ({job.get('received_at', '')})",
+                    expanded=(idx_j == 0),
+                ):
+                    # Barre de progression visuelle des 4 étapes du pipeline
+                    steps_html = f"""
+                    <div class="mb-summary-bar" style="grid-template-columns: repeat(4, 1fr); margin-top:4px; margin-bottom:14px;">
+                        <div class="mb-summary-pill active">
+                            <div class="mb-summary-label">Étape 1</div>
+                            <div class="mb-summary-val">📩 Mail reçu</div>
+                        </div>
+                        <div class="mb-summary-pill {'active' if st_str != 'Mail reçu' else ''}">
+                            <div class="mb-summary-label">Étape 2</div>
+                            <div class="mb-summary-val">🗂️ Tri des CCTP</div>
+                        </div>
+                        <div class="mb-summary-pill {'active' if st_str in ('Génération sur le site', 'En attente de validation manuelle', 'Mémoire envoyé') else ''}">
+                            <div class="mb-summary-label">Étape 3</div>
+                            <div class="mb-summary-val">⚙️ Génération sur le site</div>
+                        </div>
+                        <div class="mb-summary-pill {'active' if st_str == 'Mémoire envoyé' else ''}">
+                            <div class="mb-summary-label">Étape 4</div>
+                            <div class="mb-summary-val">{'⏳ Validation requise' if st_str == 'En attente de validation manuelle' else '📤 Mémoire envoyé'}</div>
+                        </div>
+                    </div>
+                    """
+                    st.markdown(steps_html, unsafe_allow_html=True)
+
+                    st.markdown(
+                        f"- **Expéditeur :** `{job.get('sender_email', '')}` ({job.get('entreprise_source', '')})\n"
+                        f"- **Lot(s) ciblé(s) dans le mail :** `{', '.join(job.get('lots_vises') or ['Non spécifié'])}`\n"
+                        f"- **Consignes extraites du mail :** {job.get('consignes_specifiques') or 'Aucune consigne particulière'}"
+                    )
+
+                    if job.get("classifications"):
+                        st.markdown("##### 🗂️ Résultat du Tri Intelligent des Pièces Jointes (RC / CCTP / DPGF / Annexes / Entreprise)")
+                        for c_item in job["classifications"]:
+                            cat_name = c_item.get("categorie", "")
+                            if cat_name == "IGNORED_CCTP":
+                                st.markdown(f"- 🚫 **[ÉCARTÉ — HORS LOT VISÉ]** `{c_item['filename']}` — *{c_item.get('motif', '')}*")
+                            else:
+                                st.markdown(f"- ✅ **[{cat_name}]** `{c_item['filename']}` — *{c_item.get('motif', '')}*")
+
+                    if job.get("vigilance_points"):
+                        st.markdown("##### 🛡️ Synthèse des 5 Points de Vigilance Majeurs envoyée dans le mail")
+                        for vp in job["vigilance_points"]:
+                            st.markdown(f"- **{vp['titre']}** : {vp['detail']}")
+
+                    if job.get("balises_a_completer") is not None and job.get("project_id"):
+                        bal_list = job.get("balises_a_completer") or []
+                        st.markdown(f"##### ⚠️ Balises `[À COMPLÉTER]` signalées dans le corps du mail ({len(bal_list)})")
+                        for b in bal_list:
+                            st.markdown(f"- `{b}`")
+
+                    if job.get("email_body_plain_out"):
+                        with st.expander("✉️ Aperçu de l'e-mail de réponse automatique envoyé à l'entreprise", expanded=False):
+                            st.markdown(f"**Objet :** `{job.get('email_subject_out', '')}`")
+                            if job.get("smtp_info"):
+                                st.caption(f"Statut SMTP : {job['smtp_info']}")
+                            st.code(job["email_body_plain_out"], language="text")
+
+                    if job.get("statut") == "En attente de validation manuelle":
+                        if st.button(
+                            f"✅ Valider et Envoyer maintenant à {job.get('sender_email', '')}",
+                            type="primary",
+                            use_container_width=True,
+                            key=f"log_approve_{job['job_id']}",
+                        ):
+                            ea.approve_and_send_manual_job(job["job_id"])
+                            st.rerun()
+
+        st.markdown("#### 📜 Historique chronologique des événements (Logs en direct)")
+        if logs_list:
+            for log_item in logs_list[:30]:
+                st.markdown(
+                    f"`{log_item.get('timestamp', '')}` · **[{log_item.get('statut', '')}]** — {log_item.get('message', '')}"
+                )
+        else:
+            st.caption("Aucun événement enregistré.")
+
+    with auto_tab2:
+        all_projects = ea.load_projects_db()
+        mail_projects = [p for p in all_projects if p.get("origin") == "email"]
+        if not mail_projects:
+            st.info("Aucun mémoire automatisé via mail pour le moment. Utilisez le bouton **« 🧪 Simuler la réception d'un mail »** ci-dessus pour en générer un.")
+        else:
+            for idx_mp, mproj in enumerate(mail_projects):
+                render_interactive_project_viewer(mproj, key_prefix=f"autotab_{idx_mp}")
+                st.divider()
+
+    with auto_tab3:
+        st.markdown("#### ⚙️ Paramètres du Serveur Mail (IMAP & SMTP)")
+        st.caption(
+            "Ces paramètres peuvent être définis dans un fichier `.env` (`IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD`, `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`) "
+            "ou directement dans le formulaire ci-dessous."
+        )
+        with st.form("form_imap_smtp_config"):
+            c_im1, c_im2 = st.columns(2)
+            with c_im1:
+                st.markdown("**📥 Réception des mails (IMAP)**")
+                new_imap_host = st.text_input("Serveur IMAP", value=auto_state.get("imap_host", "imap.gmail.com"))
+                new_imap_port = st.number_input("Port IMAP SSL", value=int(auto_state.get("imap_port", 993)), min_value=1, max_value=65535)
+                new_imap_user = st.text_input("Adresse e-mail surveillée (IMAP)", value=auto_state.get("imap_user", ""))
+                new_imap_pass = st.text_input("Mot de passe d'application IMAP", value=auto_state.get("imap_password", ""), type="password")
+            with c_im2:
+                st.markdown("**📤 Envoi automatique des réponses (SMTP)**")
+                new_smtp_host = st.text_input("Serveur SMTP", value=auto_state.get("smtp_host", "smtp.gmail.com"))
+                new_smtp_port = st.number_input("Port SMTP (587 TLS / 465 SSL)", value=int(auto_state.get("smtp_port", 587)), min_value=1, max_value=65535)
+                new_smtp_user = st.text_input("Utilisateur SMTP", value=auto_state.get("smtp_user", ""))
+                new_smtp_pass = st.text_input("Mot de passe d'application SMTP", value=auto_state.get("smtp_password", ""), type="password")
+
+            new_poll = st.slider(
+                "Intervalle de vérification automatique de la boîte mail (secondes)",
+                min_value=10,
+                max_value=300,
+                value=int(auto_state.get("poll_interval_seconds", 30)),
+                step=5,
+            )
+            save_mail_cfg = st.form_submit_button("💾 Enregistrer la configuration IMAP / SMTP", type="primary", use_container_width=True)
+            if save_mail_cfg:
+                auto_state["imap_host"] = new_imap_host.strip()
+                auto_state["imap_port"] = int(new_imap_port)
+                auto_state["imap_user"] = new_imap_user.strip()
+                auto_state["imap_password"] = new_imap_pass
+                auto_state["smtp_host"] = new_smtp_host.strip()
+                auto_state["smtp_port"] = int(new_smtp_port)
+                auto_state["smtp_user"] = new_smtp_user.strip() or new_imap_user.strip()
+                auto_state["smtp_password"] = new_smtp_pass or new_imap_pass
+                auto_state["smtp_from"] = new_smtp_user.strip() or new_imap_user.strip()
+                auto_state["poll_interval_seconds"] = int(new_poll)
+                ea.save_automation_state(auto_state)
+                st.success("✅ Configuration IMAP / SMTP enregistrée avec succès !")
+                st.rerun()
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # PAGE : 📂 ARCHIVES
@@ -2759,66 +3400,88 @@ elif page == "Archives":
     st.markdown(
         """
         <div class="mb-hero">
-            <div class="mb-hero-badge">📂 GESTION DOCUMENTAIRE & LIVRABLES</div>
-            <div class="mb-hero-title">Archives des Mémoires Techniques</div>
+            <div class="mb-hero-badge">📂 GESTION DOCUMENTAIRE & LIVRABLES SYNCHRONISÉS</div>
+            <div class="mb-hero-title">Archives & Projets (Site Web & Automatisés via Mail)</div>
             <p class="mb-hero-sub">
-                Retrouvez l'ensemble de vos mémoires techniques générés (versions officielles PDF et Word .docx), téléchargeables individuellement ou en pack .ZIP.
+                Ouvrez, lisez, modifiez et téléchargez tous vos mémoires techniques (<code>.docx</code> et <code>.pdf</code>), qu'ils aient été générés manuellement sur le site ou automatiquement par e-mail.
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    os.makedirs("archives", exist_ok=True)
-    fichiers = [f for f in os.listdir("archives") if f.endswith((".pdf", ".docx"))]
-    if not fichiers:
-        st.info("Aucun mémoire technique généré pour le moment. Rendez-vous dans l'onglet « Génération ».")
-    else:
-        fichiers.sort(key=lambda x: os.path.getmtime(os.path.join("archives", x)), reverse=True)
+    arch_tab1, arch_tab2 = st.tabs([
+        "📑 Projets Synchronisés (Ouvrir, Lire, Modifier & Télécharger — Site & Mail)",
+        "📦 Tous les Fichiers Livrables (.pdf & .docx)",
+    ])
 
-        # Bouton de téléchargement groupé en ZIP
-        zip_arch_buf = io.BytesIO()
-        with zipfile.ZipFile(zip_arch_buf, "w", zipfile.ZIP_DEFLATED) as zarch:
+    with arch_tab1:
+        synced_projects = ea.load_projects_db()
+        if not synced_projects:
+            st.info("Aucun projet synchronisé pour le moment. Générez un mémoire dans « Génération » ou lancez une simulation dans « Automatisation (Mails) ».")
+        else:
+            for idx_sp, sproj in enumerate(synced_projects):
+                render_interactive_project_viewer(sproj, key_prefix=f"arch_proj_{idx_sp}")
+                st.divider()
+
+    with arch_tab2:
+        os.makedirs("archives", exist_ok=True)
+        fichiers = [f for f in os.listdir("archives") if f.endswith((".pdf", ".docx"))]
+        if not fichiers:
+            st.info("Aucun mémoire technique généré pour le moment. Rendez-vous dans l'onglet « Génération ».")
+        else:
+            fichiers.sort(key=lambda x: os.path.getmtime(os.path.join("archives", x)), reverse=True)
+
+            # Bouton de téléchargement groupé en ZIP
+            zip_arch_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_arch_buf, "w", zipfile.ZIP_DEFLATED) as zarch:
+                for fichier in fichiers:
+                    zarch.write(os.path.join("archives", fichier), arcname=fichier)
+            st.download_button(
+                label=f"📦 Tout télécharger en un clic ({len(fichiers)} fichiers .ZIP)",
+                data=zip_arch_buf.getvalue(),
+                file_name=f"Archives_Memoires_Techniques_{datetime.now().strftime('%Y%m%d')}.zip",
+                mime="application/zip",
+                type="primary",
+                use_container_width=True,
+                key="dl_all_archives_zip",
+            )
+            st.divider()
+
             for fichier in fichiers:
-                zarch.write(os.path.join("archives", fichier), arcname=fichier)
-        st.download_button(
-            label=f"📦 Tout télécharger en un clic ({len(fichiers)} fichiers .ZIP)",
-            data=zip_arch_buf.getvalue(),
-            file_name=f"Archives_Memoires_Techniques_{datetime.now().strftime('%Y%m%d')}.zip",
-            mime="application/zip",
-            type="primary",
-            use_container_width=True,
-            key="dl_all_archives_zip",
-        )
-        st.divider()
-
-        for fichier in fichiers:
-            chemin = os.path.join("archives", fichier)
-            date_mod = datetime.fromtimestamp(os.path.getmtime(chemin)).strftime("%d/%m/%Y à %H:%M")
-            c1, c2, c3 = st.columns([3.2, 1.1, 0.9])
-            with c1:
-                badge_ext = "PDF OFFICIEL" if fichier.endswith(".pdf") else "WORD ÉDITABLE"
-                badge_col = "#3B82F6" if fichier.endswith(".pdf") else "#10B981"
-                st.markdown(
-                    f"<div class='mb-zone-header' style='padding:10px 14px; margin-bottom:6px; border-left:4px solid {badge_col};'>"
-                    f"<span class='mb-zone-num' style='background:rgba(59,130,246,0.12); color:{badge_col}; margin-right:8px;'>{badge_ext}</span>"
-                    f"<b style='color:var(--text-primary); font-size:14px;'>{fichier}</b><br>"
-                    f"<span style='color:var(--text-muted); font-size:12px;'>Généré le {date_mod} &nbsp;•&nbsp; {os.path.getsize(chemin) / 1024:.0f} Ko</span>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-            with c2:
-                with open(chemin, "rb") as f:
-                    st.download_button(
-                        "📥 Télécharger", data=f.read(), file_name=fichier,
-                        mime="application/pdf" if fichier.endswith(".pdf")
-                        else "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True, key=f"dl_{fichier}",
+                chemin = os.path.join("archives", fichier)
+                date_mod = datetime.fromtimestamp(os.path.getmtime(chemin)).strftime("%d/%m/%Y à %H:%M")
+                is_automail_file = "AutoMail" in fichier
+                c1, c2, c3 = st.columns([3.2, 1.1, 0.9])
+                with c1:
+                    badge_ext = "PDF OFFICIEL" if fichier.endswith(".pdf") else "WORD ÉDITABLE"
+                    badge_col = "#3B82F6" if fichier.endswith(".pdf") else "#10B981"
+                    mail_tag = (
+                        "<span class='mb-zone-num' style='background:rgba(139,92,246,0.16); color:#8B5CF6; margin-right:8px;'>📧 AUTOMATISÉ VIA MAIL</span>"
+                        if is_automail_file
+                        else ""
                     )
-            with c3:
-                if st.button("🗑️ Supprimer", key=f"del_{fichier}", use_container_width=True):
-                    os.remove(chemin)
-                    st.rerun()
+                    st.markdown(
+                        f"<div class='mb-zone-header' style='padding:10px 14px; margin-bottom:6px; border-left:4px solid {badge_col};'>"
+                        f"{mail_tag}"
+                        f"<span class='mb-zone-num' style='background:rgba(59,130,246,0.12); color:{badge_col}; margin-right:8px;'>{badge_ext}</span>"
+                        f"<b style='color:var(--text-primary); font-size:14px;'>{fichier}</b><br>"
+                        f"<span style='color:var(--text-muted); font-size:12px;'>Généré le {date_mod} &nbsp;•&nbsp; {os.path.getsize(chemin) / 1024:.0f} Ko</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                with c2:
+                    with open(chemin, "rb") as f:
+                        st.download_button(
+                            "📥 Télécharger", data=f.read(), file_name=fichier,
+                            mime="application/pdf" if fichier.endswith(".pdf")
+                            else "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            use_container_width=True, key=f"dl_{fichier}",
+                        )
+                with c3:
+                    if st.button("🗑️ Supprimer", key=f"del_{fichier}", use_container_width=True):
+                        os.remove(chemin)
+                        st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────
