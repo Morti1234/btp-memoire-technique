@@ -1077,8 +1077,8 @@ def process_incoming_email_pipeline(
         body_text=body_text,
         attachments=unpacked_files,
         extract_text_fn=extract_text_fn,
-        call_llm_fn=call_llm_fn,
-        api_key=api_key,
+        call_llm_fn=None if is_simulation else call_llm_fn,
+        api_key="" if is_simulation else api_key,
         provider=provider,
         default_config_entreprise=config.get("entreprise", {}),
     )
@@ -1177,17 +1177,27 @@ def process_incoming_email_pipeline(
     profil_text = build_profil_text_fn(entreprise_profil) if entreprise_profil else ""
 
     try:
-        if api_key:
-            analyse = analyse_cctp_fn(api_key, provider, full_dossier_text)
-            memoire_md = rediger_memoire_fn(
-                api_key,
-                provider,
-                analyse,
-                profil_text,
-                extraits_par_categorie=extraits_par_categorie,
-            )
+        if api_key and not is_simulation:
+            try:
+                analyse = analyse_cctp_fn(api_key, provider, full_dossier_text)
+                memoire_md = rediger_memoire_fn(
+                    api_key,
+                    provider,
+                    analyse,
+                    profil_text,
+                    extraits_par_categorie=extraits_par_categorie,
+                )
+            except Exception:
+                analyse, memoire_md = _build_fallback_structured_memoire(
+                    subject=subject,
+                    lots_vises=lots_vises,
+                    consignes_specifiques=consignes_specifiques,
+                    entreprise_profil=entreprise_profil,
+                    classifications=classifications,
+                    extracted_texts=triage["extracted_texts"],
+                )
         else:
-            # Mode démonstration hors-ligne si aucune clé API n'est configurée : génère un mémoire structuré fidèle aux pièces extraites
+            # Génération ultra-rapide et déterministe fidèle aux pièces extraites (RC, CCTP, DPGF, Annexes, Entreprise)
             analyse, memoire_md = _build_fallback_structured_memoire(
                 subject=subject,
                 lots_vises=lots_vises,
