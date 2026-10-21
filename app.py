@@ -2147,6 +2147,45 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Barre d'accès rapide horizontale en haut de la page centrale (toujours visible même si le menu de gauche est fermé)
+_qcol1, _qcol2, _qcol3, _qcol4 = st.columns(4, gap="small")
+with _qcol1:
+    if st.button(
+        "📄 Générer un Mémoire",
+        type="primary" if page == "Génération" else "secondary",
+        use_container_width=True,
+        key="top_quick_nav_gen",
+    ):
+        st.session_state["_jump_to_nav"] = "Génération"
+        st.rerun()
+with _qcol2:
+    if st.button(
+        "🤖 Automatisation (Mails)",
+        type="primary" if page == "Automatisation" else "secondary",
+        use_container_width=True,
+        key="top_quick_nav_auto",
+    ):
+        st.session_state["_jump_to_nav"] = "Automatisation"
+        st.rerun()
+with _qcol3:
+    if st.button(
+        "🏢 Profil Entreprise",
+        type="primary" if page == "Profil" else "secondary",
+        use_container_width=True,
+        key="top_quick_nav_prof",
+    ):
+        st.session_state["_jump_to_nav"] = "Profil"
+        st.rerun()
+with _qcol4:
+    if st.button(
+        f"📂 Archives ({nb_archives})",
+        type="primary" if page == "Archives" else "secondary",
+        use_container_width=True,
+        key="top_quick_nav_arch",
+    ):
+        st.session_state["_jump_to_nav"] = "Archives"
+        st.rerun()
+
 # ═══════════════════════════════════════════════════════════════════════
 #  PAGES DE L'APPLICATION
 # ═══════════════════════════════════════════════════════════════════════
