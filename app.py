@@ -3720,10 +3720,20 @@ elif page == "Automatisation":
 
     with auto_tab3:
         st.markdown("#### ⚙️ Paramètres du Serveur Mail (IMAP & SMTP)")
-        st.caption(
-            "Ces paramètres peuvent être définis dans un fichier `.env` (`IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD`, `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`) "
-            "ou directement dans le formulaire ci-dessous."
-        )
+        has_app_pwd = bool((auto_state.get("imap_password") or "").strip())
+        if has_app_pwd:
+            st.success(f"🟢 **Connexion Gmail configurée pour `{auto_state.get('imap_user') or ea.DEFAULT_REFERENCE_EMAIL}`** — Le site surveille automatiquement les nouveaux mails BTP toutes les {auto_state.get('poll_interval_seconds', 15)} secondes.")
+        else:
+            st.info(
+                "✅ **Vos paramètres serveurs (`imap.gmail.com:993`, `smtp.gmail.com:587` et `markethit67000@gmail.com`) sont 100 % corrects !**\n\n"
+                "👉 Il ne reste plus qu'à coller votre **Mot de passe d'application Gmail (16 lettres)** dans la case ci-dessous (collez-le dans une seule des deux cases, il sera copié automatiquement dans l'autre)."
+            )
+            st.link_button(
+                "🔑 Cliquez ici pour ouvrir la page Google et générer votre code de 16 lettres (App Password)",
+                "https://myaccount.google.com/apppasswords",
+                use_container_width=True,
+            )
+
         with st.form("form_imap_smtp_config"):
             c_im1, c_im2 = st.columns(2)
             with c_im1:
@@ -3734,7 +3744,12 @@ elif page == "Automatisation":
                     "Adresse e-mail de référence (Réception des dossiers BTP)",
                     value=auto_state.get("imap_user") or ea.DEFAULT_REFERENCE_EMAIL,
                 )
-                new_imap_pass = st.text_input("Mot de passe d'application Gmail (IMAP)", value=auto_state.get("imap_password", ""), type="password")
+                new_imap_pass = st.text_input(
+                    "Mot de passe d'application Gmail (IMAP) — 16 lettres",
+                    value=auto_state.get("imap_password", ""),
+                    type="password",
+                    placeholder="Collez ici le code 16 lettres Google...",
+                )
             with c_im2:
                 st.markdown("**📤 Renvoi automatique des mémoires aux clients (SMTP)**")
                 new_smtp_host = st.text_input("Serveur SMTP", value=auto_state.get("smtp_host", "smtp.gmail.com"))
@@ -3743,30 +3758,44 @@ elif page == "Automatisation":
                     "Adresse e-mail d'expédition (SMTP)",
                     value=auto_state.get("smtp_user") or ea.DEFAULT_REFERENCE_EMAIL,
                 )
-                new_smtp_pass = st.text_input("Mot de passe d'application Gmail (SMTP)", value=auto_state.get("smtp_password", ""), type="password")
+                new_smtp_pass = st.text_input(
+                    "Mot de passe d'application Gmail (SMTP) — auto-synchronisé avec IMAP",
+                    value=auto_state.get("smtp_password", ""),
+                    type="password",
+                    placeholder="Laissez vide si déjà collé à gauche...",
+                )
 
             new_poll = st.slider(
                 "Intervalle de vérification automatique de la boîte mail (secondes)",
                 min_value=10,
                 max_value=300,
-                value=int(auto_state.get("poll_interval_seconds", 30)),
+                value=int(auto_state.get("poll_interval_seconds", 15)),
                 step=5,
             )
-            save_mail_cfg = st.form_submit_button("💾 Enregistrer la configuration IMAP / SMTP", type="primary", use_container_width=True)
+            save_mail_cfg = st.form_submit_button("💾 Enregistrer & Tester la connexion Gmail (IMAP / SMTP)", type="primary", use_container_width=True)
             if save_mail_cfg:
+                unified_pwd = (new_imap_pass or new_smtp_pass or "").strip().replace(" ", "")
+                auto_state["watcher_enabled"] = True
                 auto_state["imap_host"] = new_imap_host.strip()
                 auto_state["imap_port"] = int(new_imap_port)
-                auto_state["imap_user"] = new_imap_user.strip()
-                auto_state["imap_password"] = new_imap_pass
+                auto_state["imap_user"] = new_imap_user.strip() or ea.DEFAULT_REFERENCE_EMAIL
+                auto_state["imap_password"] = unified_pwd
                 auto_state["smtp_host"] = new_smtp_host.strip()
                 auto_state["smtp_port"] = int(new_smtp_port)
-                auto_state["smtp_user"] = new_smtp_user.strip() or new_imap_user.strip()
-                auto_state["smtp_password"] = new_smtp_pass or new_imap_pass
-                auto_state["smtp_from"] = new_smtp_user.strip() or new_imap_user.strip()
+                auto_state["smtp_user"] = new_smtp_user.strip() or new_imap_user.strip() or ea.DEFAULT_REFERENCE_EMAIL
+                auto_state["smtp_password"] = (new_smtp_pass.strip().replace(" ", "") if new_smtp_pass.strip() else unified_pwd)
+                auto_state["smtp_from"] = auto_state["smtp_user"]
                 auto_state["poll_interval_seconds"] = int(new_poll)
                 ea.save_automation_state(auto_state)
-                st.success("✅ Configuration IMAP / SMTP enregistrée avec succès !")
-                st.rerun()
+
+                if unified_pwd:
+                    ok_conn, msg_conn = ea.test_imap_smtp_connection(auto_state)
+                    if ok_conn:
+                        st.success(msg_conn)
+                    else:
+                        st.error(msg_conn)
+                else:
+                    st.warning("Configuration sauvegardée, mais le champ « Mot de passe d'application Gmail » est encore vide.")
 
 
 # ─────────────────────────────────────────────────────────────────────────

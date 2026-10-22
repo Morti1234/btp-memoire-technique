@@ -955,6 +955,13 @@ def send_smtp_email(
     except Exception:
         pass
 
+    DEMO_FAKE_DOMAINS = ("durand-tp-vrd.fr", "entreprise-btp.fr", "martin-go.fr", "example.com")
+    if any(to_email.lower().endswith(d) for d in DEMO_FAKE_DOMAINS):
+        return (
+            True,
+            f"Mode Simulation Démo : e-mail de réponse généré et sauvegardé localement ({eml_path}) [Adresse fictive de test `{to_email}` non expédiée sur Internet]",
+        )
+
     if not smtp_host or not smtp_user or not smtp_password:
         return (
             True,
@@ -1572,20 +1579,111 @@ def _parse_email_message(msg: email.message.Message) -> tuple[str, str, str, str
     return sender_email, sender_name, subject, body_text, attachments
 
 
+def _is_btp_candidate_email(
+    msg: email.message.Message,
+    sender_email: str,
+    subject: str,
+    body_text: str,
+    attachments: list[tuple[str, bytes]],
+) -> bool:
+    """
+    Détermine si un e-mail entrant sur markethit67000@gmail.com provient d'une demande BTP / Construction
+    ou contient des pièces DCE (.pdf, .docx, .xlsx, .csv, .zip), tout en ignorant les newsletters et spams.
+    """
+    s_low = (sender_email or "").lower()
+    subj_low = (subject or "").lower()
+    body_low = (body_text or "").lower()
+
+    # Ignorer les boucles d'auto-réponse du service lui-même
+    if "✅ mémoire technique prêt" in subj_low or "⚠️ pièce manquante pour générer votre mémoire" in subj_low:
+        return False
+
+    # Vérifier si le mail contient au moins une pièce jointe exploitable (.pdf, .docx, .xlsx, .xls, .csv, .zip)
+    valid_exts = (".pdf", ".docx", ".xlsx", ".xls", ".csv", ".zip", ".txt")
+    has_valid_attachment = any(
+        (fname or "").lower().endswith(valid_exts) for fname, _ in (attachments or [])
+    )
+    if has_valid_attachment:
+        return True
+
+    # Ignorer les newsletters / notifications automatiques sans pièces jointes BTP
+    newsletter_senders = (
+        "noreply", "no-reply", "newsletter", "showroomprive", "traderepublic",
+        "dealabs", "starbucks", "opusclip", "skool", "ollama", "blueberry",
+        "notifications@", "marketing@", "promo@", "security@", "google.com",
+    )
+    if any(ns in s_low for ns in newsletter_senders):
+        return False
+    if msg.get("List-Unsubscribe"):
+        return False
+
+    # Si pas de pièce jointe mais que l'objet ou le corps mentionne explicitement un besoin BTP / mémoire technique
+    btp_keywords = (
+        "memoire technique", "mémoire technique", "cctp", "dpgf", "dqe", "dce",
+        "reglement de consultation", "règlement de consultation", "chantier",
+        "appel d'offre", "appel d offre", "btp", "gros oeuvre", "gros œuvre",
+        "vrd", "lot 0", "lot 1", "lot 2", "construction", "travaux",
+    )
+    combined = f"{subj_low} {body_low}"
+    return any(kw in combined for kw in btp_keywords)
+
+
+def test_imap_smtp_connection(state: dict) -> tuple[bool, str]:
+    """Teste en direct la connexion IMAP (réception) et SMTP (envoi) pour markethit67000@gmail.com."""
+    imap_host = (state.get("imap_host") or "imap.gmail.com").strip()
+    imap_port = int(state.get("imap_port") or 993)
+    imap_user = (state.get("imap_user") or DEFAULT_REFERENCE_EMAIL).strip()
+    imap_password = (state.get("imap_password") or "").strip().replace(" ", "")
+
+    smtp_host = (state.get("smtp_host") or "smtp.gmail.com").strip()
+    smtp_port = int(state.get("smtp_port") or 587)
+    smtp_user = (state.get("smtp_user") or imap_user).strip()
+    smtp_password = (state.get("smtp_password") or imap_password).strip().replace(" ", "")
+
+    if not imap_password:
+        return (
+            False,
+            f"Veuillez renseigner le Mot de passe d'application Gmail (16 lettres) pour {imap_user}.",
+        )
+
+    try:
+        mail = imaplib.IMAP4_SSL(imap_host, imap_port, timeout=12)
+        mail.login(imap_user, imap_password)
+        mail.select("INBOX")
+        mail.logout()
+    except Exception as exc:
+        return False, f"Échec de connexion IMAP sur {imap_user} ({imap_host}:{imap_port}) : {exc}"
+
+    try:
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, context=ssl.create_default_context(), timeout=12) as srv:
+                srv.login(smtp_user, smtp_password)
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=12) as srv:
+                srv.ehlo()
+                srv.starttls(context=ssl.create_default_context())
+                srv.ehlo()
+                srv.login(smtp_user, smtp_password)
+    except Exception as exc:
+        return False, f"Connexion IMAP réussie ✅, mais échec SMTP sur {smtp_user} ({smtp_host}:{smtp_port}) : {exc}"
+
+    return True, f"✅ Connexion IMAP (Réception) & SMTP (Renvoi automatique) opérationnelle sur {imap_user} !"
+
+
 def poll_imap_inbox_once(
     pipeline_callbacks: dict[str, Callable],
     load_config_fn: Callable[[], dict],
 ) -> tuple[int, Optional[str]]:
     """
-    Vérifie une fois la boîte mail IMAP pour tout nouvel e-mail non lu (UNSEEN)
-    et déclenche le pipeline complet sur chaque message trouvé.
-    Retourne (nombre_de_mails_traites, erreur_eventuelle).
+    Vérifie rapidement la boîte mail IMAP (markethit67000@gmail.com) pour les nouveaux e-mails non lus récents,
+    filtre uniquement les demandes BTP / Construction (ou mails avec pièces DCE), assemble les documents,
+    génère le mémoire technique (.pdf & .docx) et le renvoie au même client.
     """
     state = load_automation_state()
-    imap_host = (state.get("imap_host") or "").strip()
+    imap_host = (state.get("imap_host") or "imap.gmail.com").strip()
     imap_port = int(state.get("imap_port") or 993)
-    imap_user = (state.get("imap_user") or "").strip()
-    imap_password = (state.get("imap_password") or "").strip()
+    imap_user = (state.get("imap_user") or DEFAULT_REFERENCE_EMAIL).strip()
+    imap_password = (state.get("imap_password") or "").strip().replace(" ", "")
 
     now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     if not imap_host or not imap_user or not imap_password:
@@ -1593,15 +1691,17 @@ def poll_imap_inbox_once(
             st_cur = load_automation_state()
             st_cur["last_check"] = now_str
             save_automation_state(st_cur)
-        return 0, "Identifiants IMAP non renseignés (utilisez le simulateur ou configurez IMAP)."
+        return 0, f"En attente du Mot de passe d'application Gmail pour {imap_user} (ou utilisez le dépôt rapide / simulateur)."
 
     processed_count = 0
     try:
-        mail = imaplib.IMAP4_SSL(imap_host, imap_port)
+        mail = imaplib.IMAP4_SSL(imap_host, imap_port, timeout=15)
         mail.login(imap_user, imap_password)
         mail.select("INBOX")
 
-        status, response = mail.search(None, "UNSEEN")
+        # Chercher uniquement les mails non lus du jour (évite de scanner les 3 200 anciennes newsletters)
+        imap_date = datetime.now().strftime("%d-%b-%Y")
+        status, response = mail.search(None, f'(UNSEEN SINCE "{imap_date}")')
         if status != "OK" or not response or not response[0]:
             mail.logout()
             with _DB_LOCK:
@@ -1611,8 +1711,9 @@ def poll_imap_inbox_once(
                 save_automation_state(st_cur)
             return 0, None
 
-        msg_ids = response[0].split()
+        msg_ids = response[0].split()[-15:]  # Examiner au maximum les 15 derniers mails non lus récents
         config = load_config_fn()
+        seen_uids = set(state.get("processed_msg_ids") or [])
 
         for num in msg_ids:
             res_fetch, data = mail.fetch(num, "(RFC822)")
@@ -1620,9 +1721,18 @@ def poll_imap_inbox_once(
                 continue
             raw_email = data[0][1]
             msg = email.message_from_bytes(raw_email)
-            sender_email, sender_name, subject, body_text, attachments = _parse_email_message(msg)
+            msg_uid = (msg.get("Message-ID") or num.decode("utf-8", errors="ignore")).strip()
+            if msg_uid in seen_uids:
+                continue
 
-            # Marquer comme lu pour éviter tout retraitement en boucle
+            sender_email, sender_name, subject, body_text, attachments = _parse_email_message(msg)
+            seen_uids.add(msg_uid)
+
+            # Ignorer silencieusement les newsletters personnelles (Showroomprive, Trade Republic, etc.)
+            if not _is_btp_candidate_email(msg, sender_email, subject, body_text, attachments):
+                continue
+
+            # Marquer comme lu uniquement les vrais mails BTP traités
             mail.store(num, "+FLAGS", "\\Seen")
 
             process_incoming_email_pipeline(
@@ -1649,6 +1759,7 @@ def poll_imap_inbox_once(
             st_cur = load_automation_state()
             st_cur["last_check"] = now_str
             st_cur["last_error"] = None
+            st_cur["processed_msg_ids"] = list(seen_uids)[-300:]
             save_automation_state(st_cur)
         return processed_count, None
     except Exception as exc:
