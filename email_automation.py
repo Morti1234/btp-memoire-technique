@@ -1377,6 +1377,14 @@ def process_incoming_email_pipeline(
 
     vigilance_points = extract_five_vigilance_points(analyse)
     balises_a_completer = list(dict.fromkeys(re.findall(r"\[À COMPLÉTER[^\]]*\]", memoire_md)))
+    rapport_qualite_dict = None
+    if filtered_prescriptions:
+        try:
+            plan_auto = dp.construire_plan_memoire(analyse, filtered_prescriptions, target_lot=lots_vises[0] if lots_vises else "LOT_02")
+            rep_q_auto = dp.controler_qualite_memoire(memoire_md, filtered_prescriptions, plan_auto)
+            rapport_qualite_dict = rep_q_auto.to_dict()
+        except Exception:
+            pass
 
     # Enregistrer le projet dans la base de données du site avec le badge "Automatisé via Mail"
     project_entry = save_project_to_db({
@@ -1401,6 +1409,7 @@ def process_incoming_email_pipeline(
         "client_dir": client_dir,
         "vigilance_points": vigilance_points,
         "balises_a_completer": balises_a_completer,
+        "rapport_qualite": rapport_qualite_dict,
         "classifications": classifications,
     })
 

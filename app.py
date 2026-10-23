@@ -2295,6 +2295,19 @@ def render_interactive_project_viewer(proj: dict, key_prefix: str):
             st.info("Aperçu PDF non disponible.")
 
     with vt4:
+        # Contrôle qualité final (Étape 7)
+        rep_q_proj = proj.get("rapport_qualite")
+        if rep_q_proj:
+            st.markdown(f"#### 📊 Bilan du Contrôle Qualité (Score : {rep_q_proj.get('score_qualite_pct', 0)} / 100 — Statut : {rep_q_proj.get('statut_global', 'CONFORME')})")
+            c_q1, c_q2, c_q3 = st.columns(3)
+            with c_q1:
+                st.metric("Couverture Prescriptions", f"{rep_q_proj.get('taux_couverture_prescriptions', 0)}%")
+            with c_q2:
+                st.metric("Sections du plan", f"{rep_q_proj.get('sections_redigees_count', 0)} / {rep_q_proj.get('sections_prevues_count', 0)}")
+            with c_q3:
+                st.metric("Champs manquants", f"{rep_q_proj.get('informations_a_completer_count', 0)}")
+            st.divider()
+
         vig_pts = proj.get("vigilance_points") or ea.extract_five_vigilance_points(proj.get("analyse") or {})
         st.markdown("#### 🛡️ Les 5 Points de Vigilance Majeurs du Chantier (RC & CCTP)")
         for vp in vig_pts:
@@ -2960,6 +2973,28 @@ elif page == "Génération":
                             else:
                                 st.caption("Données globales du document prêtes pour le croisement.")
 
+        # ── SÉLECTION DU PÉRIMÈTRE & DU LOT (ÉTAPES 1 & 2 DE SÉLECTION) ────
+        detected_lots_clean: list[str] = []
+        if total_uploaded > 0 and current_processed_docs_list:
+            for d in current_processed_docs_list:
+                for l in d.lots_concernes:
+                    if l and not any(k in str(l).upper() for k in ("TOUS", "TCE", "GENERAL", "COMMUN")):
+                        if l not in detected_lots_clean:
+                            detected_lots_clean.append(l)
+
+        selected_target_lot = "LOT_02"
+        if len(detected_lots_clean) > 1:
+            st.markdown("##### 🎯 Périmètre des travaux : Sélection du lot à soumissionner")
+            selected_target_lot = st.selectbox(
+                "Plusieurs lots techniques ont été identifiés dans les pièces uploadées. Choisissez le lot pour lequel vous produisez ce mémoire :",
+                options=detected_lots_clean,
+                index=0,
+                key="select_target_lot_manual",
+            )
+        elif len(detected_lots_clean) == 1:
+            selected_target_lot = detected_lots_clean[0]
+            st.info(f"🎯 **Périmètre du marché confirmé** : Production du mémoire pour `{selected_target_lot}`.")
+
         generate_crossed_btn = st.button(
             f"🚀 Croiser les {total_uploaded} document(s) & Générer le Mémoire Technique Complet"
             if total_uploaded > 0
@@ -3039,7 +3074,7 @@ elif page == "Génération":
                     traceability_matrix = consolidation["traceability_matrix"]
                     all_market_prescriptions = dp.extract_market_prescriptions(processed_docs_execution)
                     detected_lots = [lot for d in processed_docs_execution for lot in d.lots_concernes if lot and not any(k in str(lot).upper() for k in ("TOUS", "TCE"))]
-                    target_lot_selected = detected_lots[0] if detected_lots else "LOT_02"
+                    target_lot_selected = st.session_state.get("select_target_lot_manual") or (detected_lots[0] if detected_lots else "LOT_02")
                     filtered_prescriptions, market_contradictions = dp.filter_prescriptions_for_target_lot(
                         all_market_prescriptions,
                         target_lot=target_lot_selected,
@@ -3314,6 +3349,28 @@ elif page == "Génération":
                     )
                     for m in uniques_marqueurs:
                         st.markdown(f"- `{m}`")
+
+            # ── Contrôle Qualité Final & Couverture des Exigences (Étape 7) ──
+            rep_q = st.session_state.get("dernier_rapport_qualite")
+            if rep_q:
+                with st.expander(
+                    f"📊 Contrôle Qualité Final & Couverture des Exigences (Score : {rep_q.get('score_qualite_pct', 0)} / 100 — Statut : {rep_q.get('statut_global', 'CONFORME')})",
+                    expanded=True,
+                ):
+                    qc1, qc2, qc3, qc4 = st.columns(4)
+                    with qc1:
+                        st.metric("Score Qualité BTP", f"{rep_q.get('score_qualite_pct', 0)} / 100")
+                    with qc2:
+                        st.metric("Couverture Prescriptions", f"{rep_q.get('taux_couverture_prescriptions', 0)}%")
+                    with qc3:
+                        st.metric("Sections rédigées", f"{rep_q.get('sections_redigees_count', 0)} / {rep_q.get('sections_prevues_count', 0)}")
+                    with qc4:
+                        st.metric("Champs à compléter", f"{rep_q.get('informations_a_completer_count', 0)}")
+
+                    if rep_q.get("points_vigilance"):
+                        st.markdown("**Points de vigilance identifiés :**")
+                        for pv in rep_q["points_vigilance"]:
+                            st.warning(f"⚠️ {pv}")
 
             with st.expander("📊 Voir l'analyse croisée extraite des documents (RC, CCTP, DPGF, PGC, Entreprise)", expanded=False):
                 st.json(res["analyse"])
