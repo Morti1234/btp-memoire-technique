@@ -17,7 +17,7 @@ import re
 import textwrap
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 
 import pdfplumber
 import streamlit as st
@@ -1700,74 +1700,71 @@ def rediger_memoire(
     extraits_par_categorie: Optional[dict[str, str]] = None,
     traceability_matrix: Optional[list[dict[str, Any]]] = None,
     prescriptions_marche: Optional[list[Any]] = None,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> str:
     """
-    Demande au LLM de rédiger le mémoire technique complet en croisant :
-    1. L'analyse JSON multi-documents (RC + CCTP + DPGF + Annexes + Docs Entreprise)
-    2. Le profil de l'entreprise enregistré dans l'application (s'il existe)
-    3. Les extraits directs des 5 catégories de documents uploadés
-    4. Les prescriptions communes et spécifiques filtrées (CCTP Lot 00, RC, Lot ciblé)
-    5. La matrice de traçabilité granulaire (Document, Page, Article)
+    Rédige un mémoire technique approfondi et sur-mesure par génération modulaire (Étapes 1 à 7) :
+    1. Construit le plan imposé par le RC ou les critères de notation (Étape 1).
+    2. Rédige chaque section séparément avec son contexte ciblé et sa grille en 10 points (Étapes 2, 3, 4, 5).
+    3. Assemble les sections sans troncature de modèle (Étape 6).
+    4. Effectue le contrôle qualité final de couverture et non-invention (Étape 7).
     """
-    user_content = (
-        "## 1. Analyse structurée et croisée des documents uploadés (JSON)\n"
-        f"```json\n{json.dumps(analyse_json, ensure_ascii=False, indent=2)}\n```\n\n"
-    )
+    target_lot = "LOT_02"
+    if analyse_json and isinstance(analyse_json, dict):
+        lots = analyse_json.get("lots_concernes", [])
+        if lots and isinstance(lots, list):
+            for l in lots:
+                if not any(k in str(l).upper() for k in ("TOUS", "TCE")):
+                    target_lot = dp.normalize_lot_code(str(l))
+                    break
 
-    if profil_entreprise and profil_entreprise.strip():
-        user_content += f"## 2. Profil enregistré de l'entreprise candidate\n{profil_entreprise}\n\n"
-    else:
-        user_content += (
-            "## 2. Profil enregistré de l'entreprise candidate\n"
-            "Aucun profil pré-enregistré dans l'onglet Profil. Utilise exclusivement les informations "
-            "extraites de la catégorie 5 « Documents de l'Entreprise » (organigramme, CV, personnel, "
-            "parc matériel, CACES/AIPR, certifications, fournisseurs, déchèteries). "
-            "Si une information propre à l'entreprise ou au chantier n'est présente dans aucun document uploadé, "
-            "n'invente rien et insère obligatoirement `[À COMPLÉTER : préciser ici ...]`.\n\n"
+    # Étape 1 : Construction du plan formel
+    prescr_list = prescriptions_marche or []
+    plan = dp.construire_plan_memoire(analyse_json, prescr_list, target_lot=target_lot)
+
+    # Étape 2 à 5 : Rédaction modulaire section par section
+    sections_redigees: list[dict[str, Any]] = []
+    total_sec = plan.total_sections
+
+    for idx, section in enumerate(plan.sections, 1):
+        if progress_callback:
+            try:
+                progress_callback(idx, total_sec, section.titre)
+            except Exception:
+                pass
+
+        sec_texte = dp.rediger_section_memoire(
+            section=section,
+            profil_entreprise=profil_entreprise or "",
+            analyse_json=analyse_json,
+            plan=plan,
+            api_key=api_key,
+            provider=provider,
+            call_llm_fn=call_llm if api_key else None,
         )
+        sections_redigees.append({
+            "numero": section.numero,
+            "titre": section.titre,
+            "texte": sec_texte,
+        })
 
-    if extraits_par_categorie:
-        user_content += "## 3. Extraits directs des pièces uploadées par catégorie\n"
-        for cat_label, cat_text in extraits_par_categorie.items():
-            if cat_text and cat_text.strip():
-                # Extrait généreux pour garantir la prise en compte intégrale de tous les lots techniques
-                extrait_borne = cat_text[:50_000]
-                user_content += f"\n### {cat_label}\n{extrait_borne}\n"
-        user_content += "\n"
+    # Étape 6 : Assemblage complet sans troncature
+    entreprise_data = {}
+    if profil_entreprise:
+        entreprise_data = {"nom": profil_entreprise.split("\n")[0].replace("Raison sociale :", "").strip()}
+    memoire_md = dp.assembler_memoire_technique(sections_redigees, plan, analyse_json, entreprise_data)
 
-    if prescriptions_marche:
-        user_content += "## 4. Prescriptions contractuelles communes et spécifiques filtrées\n"
-        user_content += "Ces prescriptions issues du CCTP Général (Lot 00), du RC et du lot ciblé sont OBLIGATOIRES. Intègre rigoureusement chaque prescription avec sa méthode d'exécution et sa source contractuelle :\n"
-        for p in prescriptions_marche:
-            p_dict = p.to_dict() if hasattr(p, "to_dict") else p
-            if p_dict.get("applicabilite_lot_cible", True):
-                ref_src = f"(Source: {p_dict.get('document_source')}, p. {p_dict.get('page')}, {p_dict.get('article', '')})"
-                contra_note = f" ⚠️ [CONTRADICTION À SIGNALER : {p_dict['contradiction_detail']}]" if p_dict.get("is_contradiction") else ""
-                user_content += f"- **[{p_dict.get('categorie')}] [{p_dict.get('caractere', 'OBLIGATOIRE')}]** {p_dict.get('texte')} *{ref_src}*{contra_note}\n"
-        user_content += "\n"
+    # Étape 7 : Contrôle qualité final avant export
+    rapport_qualite = dp.controler_qualite_memoire(memoire_md, prescr_list, plan)
 
-    if traceability_matrix:
-        user_content += "## 5. Matrice de traçabilité des exigences du marché (Document / Page / Article)\n"
-        user_content += "Appuie tes développements méthodologiques sur ces exigences sourcées en citant systématiquement les références contractuelles :\n"
-        for item in traceability_matrix[:40]:
-            dom = str(item.get("domaine", "Exigence")).replace("_", " ").capitalize()
-            doc_name = item.get("source_doc", "DCE")
-            pg = item.get("page", 1)
-            art = item.get("article", "")
-            txt = item.get("contenu", "")
-            user_content += f"- **[{dom}]** {txt} *(Source: {doc_name}, p. {pg}, {art})*\n"
-        user_content += "\n"
+    # Sauvegarde du rapport qualité dans la session Streamlit si active
+    try:
+        import streamlit as st
+        st.session_state["dernier_rapport_qualite"] = rapport_qualite.to_dict()
+    except Exception:
+        pass
 
-    user_content += (
-        "Rédige maintenant le Mémoire Technique complet, personnalisé et ultra-précis en appliquant strictement :\n"
-        "- L'ordre exact des critères de notation du Règlement de Consultation (RC) s'il est fourni (sinon les 8 sections obligatoires),\n"
-        "- La fusion de tous les CCTP (Général Lot 00 + lots techniques),\n"
-        "- Le croisement systématique CCTP (méthode + norme DTU) + DPGF (quantités exactes m², m³, ml, u) + Entreprise (personnel habilité + matériel précis),\n"
-        "- La traçabilité : insère des références explicites aux pièces du DCE entre parenthèses, ex: `(selon CCTP Lot 02, p. 14, Art. 4.2)`,\n"
-        "- La règle anti-invention : écris `[À COMPLÉTER : préciser ici...]` pour toute donnée spécifique absente des documents."
-    )
-
-    return call_llm(api_key, provider, SYSTEM_PROMPT_REDACTION, user_content)
+    return memoire_md
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -3073,9 +3070,12 @@ elif page == "Génération":
                     st.stop()
 
             # ── Tâche B : Rédaction du Mémoire Technique ────────────────────
-            with st.status("✍️ Rédaction du Mémoire Technique sur-mesure (ordre du RC, traçabilité exacte, règle anti-invention)…", expanded=True) as status:
+            with st.status("✍️ Rédaction du Mémoire Technique modulaire (Plan RC × Sections unitaires × Règle anti-invention)…", expanded=True) as status:
                 try:
-                    st.write("Rédaction détaillée phase par phase en croisant CCTP + DPGF + Moyens Entreprise + Traçabilité…")
+                    def _ui_progress(cur, total, sec_title):
+                        st.write(f"📝 Rédaction Section {cur}/{total} : **{sec_title}**…")
+
+                    st.write("Construction du plan de rédaction et cadrage des sections…")
                     memoire_md = rediger_memoire(
                         api_key,
                         llm_provider,
@@ -3084,8 +3084,9 @@ elif page == "Génération":
                         extraits_par_categorie=extraits_par_categorie,
                         traceability_matrix=traceability_matrix,
                         prescriptions_marche=filtered_prescriptions,
+                        progress_callback=_ui_progress,
                     )
-                    st.write("✅ Rédaction du Mémoire Technique terminée.")
+                    st.write("✅ Assemblage multi-sections et audit qualité final terminés.")
                     status.update(label="✅ Mémoire Technique rédigé avec succès", state="complete")
                 except ValueError as e:
                     status.update(label="❌ Erreur de rédaction", state="error")
