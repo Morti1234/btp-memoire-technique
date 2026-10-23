@@ -17,7 +17,7 @@ import re
 import textwrap
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import pdfplumber
 import streamlit as st
@@ -33,6 +33,7 @@ import zipfile
 
 import video_tools as vt
 import email_automation as ea
+import document_processor as dp
 
 # ─────────────────────────────────────────────────────────────────────────
 # 0. PERSISTENCE – Compatible local ET Streamlit Cloud
@@ -1697,12 +1698,14 @@ def rediger_memoire(
     analyse_json: dict,
     profil_entreprise: Optional[str] = None,
     extraits_par_categorie: Optional[dict[str, str]] = None,
+    traceability_matrix: Optional[list[dict[str, Any]]] = None,
 ) -> str:
     """
     Demande au LLM de rédiger le mémoire technique complet en croisant :
     1. L'analyse JSON multi-documents (RC + CCTP + DPGF + Annexes + Docs Entreprise)
     2. Le profil de l'entreprise enregistré dans l'application (s'il existe)
     3. Les extraits directs des 5 catégories de documents uploadés
+    4. La matrice de traçabilité granulaire (Document, Page, Article)
     """
     user_content = (
         "## 1. Analyse structurée et croisée des documents uploadés (JSON)\n"
@@ -1725,9 +1728,21 @@ def rediger_memoire(
         user_content += "## 3. Extraits directs des pièces uploadées par catégorie\n"
         for cat_label, cat_text in extraits_par_categorie.items():
             if cat_text and cat_text.strip():
-                # On inclut un extrait généreux par catégorie pour garantir une fidélité maximale aux chiffres et textes
-                extrait_borne = cat_text[:18_000]
+                # Extrait généreux pour garantir la prise en compte intégrale de tous les lots techniques
+                extrait_borne = cat_text[:50_000]
                 user_content += f"\n### {cat_label}\n{extrait_borne}\n"
+        user_content += "\n"
+
+    if traceability_matrix:
+        user_content += "## 4. Matrice de traçabilité des exigences du marché (Document / Page / Article)\n"
+        user_content += "Appuie tes développements méthodologiques sur ces exigences sourcées en citant systématiquement les références contractuelles :\n"
+        for item in traceability_matrix[:40]:
+            dom = str(item.get("domaine", "Exigence")).replace("_", " ").capitalize()
+            doc_name = item.get("source_doc", "DCE")
+            pg = item.get("page", 1)
+            art = item.get("article", "")
+            txt = item.get("contenu", "")
+            user_content += f"- **[{dom}]** {txt} *(Source: {doc_name}, p. {pg}, {art})*\n"
         user_content += "\n"
 
     user_content += (
@@ -1735,6 +1750,7 @@ def rediger_memoire(
         "- L'ordre exact des critères de notation du Règlement de Consultation (RC) s'il est fourni (sinon les 8 sections obligatoires),\n"
         "- La fusion de tous les CCTP (Général Lot 00 + lots techniques),\n"
         "- Le croisement systématique CCTP (méthode + norme DTU) + DPGF (quantités exactes m², m³, ml, u) + Entreprise (personnel habilité + matériel précis),\n"
+        "- La traçabilité : insère des références explicites aux pièces du DCE entre parenthèses, ex: `(selon CCTP Lot 02, p. 14, Art. 4.2)`,\n"
         "- La règle anti-invention : écris `[À COMPLÉTER : préciser ici...]` pour toute donnée spécifique absente des documents."
     )
 
@@ -1863,11 +1879,43 @@ def generate_docx(memoire_text: str, analyse_json: dict, entreprise: dict) -> io
 
     # ── Contenu du mémoire ──────────────────────────────────────────────
     lines = memoire_text.split("\n")
-    for line in lines:
-        stripped = line.strip()
+    idx = 0
+    while idx < len(lines):
+        stripped = lines[idx].strip()
 
         if not stripped:
             doc.add_paragraph("")
+            idx += 1
+            continue
+
+        # Détection d'un tableau Markdown pour création d'une vraie table Word
+        if stripped.startswith("|") and stripped.endswith("|") and "|" in stripped[1:-1]:
+            table_lines = []
+            while idx < len(lines) and lines[idx].strip().startswith("|") and lines[idx].strip().endswith("|"):
+                table_lines.append(lines[idx].strip())
+                idx += 1
+
+            rows_data = []
+            for tl in table_lines:
+                cells = [c.strip() for c in tl.split("|")[1:-1]]
+                # Ignorer la ligne de séparation |---|---|
+                if not all(set(c) <= set("-: ") for c in cells if c):
+                    rows_data.append(cells)
+
+            if rows_data:
+                max_cols = max(len(r) for r in rows_data)
+                tbl = doc.add_table(rows=len(rows_data), cols=max_cols)
+                tbl.style = "Table Grid"
+                for r_idx, row in enumerate(rows_data):
+                    for c_idx, cell_val in enumerate(row):
+                        if c_idx < max_cols:
+                            cell = tbl.cell(r_idx, c_idx)
+                            cell_p = cell.paragraphs[0]
+                            _add_formatted_runs(cell_p, cell_val)
+                            if r_idx == 0:
+                                for r in cell_p.runs:
+                                    r.bold = True
+                doc.add_paragraph("")
             continue
 
         if stripped.startswith("### "):
@@ -1887,6 +1935,8 @@ def generate_docx(memoire_text: str, analyse_json: dict, entreprise: dict) -> io
         else:
             p = doc.add_paragraph()
             _add_formatted_runs(p, stripped)
+
+        idx += 1
 
     # ── Sauvegarde en mémoire ───────────────────────────────────────────
     buffer = io.BytesIO()
@@ -2794,6 +2844,112 @@ elif page == "Génération":
             unsafe_allow_html=True,
         )
 
+        # ── DIAGNOSTIC DOCUMENTAIRE & TRAÇABILITÉ UNITAIRE (ÉTAPES 1 À 5) ────
+        current_processed_docs_list = []
+        if total_uploaded > 0:
+            all_uploaded_files = []
+            if rc_file:
+                all_uploaded_files.append((rc_file, "RC"))
+            for f in (cctp_multi_files or []):
+                all_uploaded_files.append((f, "CCTP_LOT" if "lot" in f.name.lower() and not any(k in f.name.lower() for k in ["lot00", "lot_00", "lot 00"]) else "CCTP_GENERAL"))
+            for f in (dpgf_files or []):
+                all_uploaded_files.append((f, "DPGF"))
+            for f in (annexes_files or []):
+                all_uploaded_files.append((f, "ANNEXES"))
+            for f in (entreprise_files or []):
+                all_uploaded_files.append((f, "ENTREPRISE"))
+
+            if "_processed_docs_cache" not in st.session_state:
+                st.session_state["_processed_docs_cache"] = {}
+
+            for f_item, sugg_cat in all_uploaded_files:
+                f_key = f"{f_item.name}_{getattr(f_item, 'size', 0)}"
+                if f_key in st.session_state["_processed_docs_cache"]:
+                    doc_proc = st.session_state["_processed_docs_cache"][f_key]
+                else:
+                    doc_proc = dp.process_single_document(f_item, suggested_category=sugg_cat)
+                    doc_proc = dp.analyze_single_document(doc_proc)
+                    st.session_state["_processed_docs_cache"][f_key] = doc_proc
+                current_processed_docs_list.append(doc_proc)
+
+            validation_rep = dp.validate_processed_documents(current_processed_docs_list)
+            st.session_state["_current_validation_report"] = validation_rep
+            st.session_state["_current_processed_docs"] = current_processed_docs_list
+
+            with st.expander(
+                f"📋 Diagnostic Documentaire & Traçabilité ({len(current_processed_docs_list)} fichier(s) audité(s) individuellement)",
+                expanded=True,
+            ):
+                if validation_rep.global_status == "VALIDE":
+                    st.success("✅ **Contrôle documentaire validé** : Chaque fichier a été analysé individuellement sans erreur.")
+                elif validation_rep.global_status == "ATTENTION":
+                    st.warning(f"⚠️ **Avertissements** : {' · '.join(validation_rep.summary_messages)}")
+                else:
+                    st.error(f"❌ **Anomalies bloquantes** : {' · '.join(validation_rep.summary_messages)}")
+
+                d_m1, d_m2, d_m3, d_m4 = st.columns(4)
+                with d_m1:
+                    st.metric("Documents traités", f"{validation_rep.readable_docs_count} / {validation_rep.total_docs}")
+                with d_m2:
+                    total_pages_sum = sum(d.page_count for d in current_processed_docs_list)
+                    scanned_pages_sum = sum(d.unreadable_pages_count for d in current_processed_docs_list)
+                    st.metric("Pages lues / scannées", f"{total_pages_sum - scanned_pages_sum} / {total_pages_sum}", delta=f"-{scanned_pages_sum} scannées" if scanned_pages_sum else None, delta_color="inverse")
+                with d_m3:
+                    lots_txt = ", ".join(validation_rep.lots_detected[:3]) if validation_rep.lots_detected else "Général"
+                    st.metric("Lots détectés", lots_txt if len(lots_txt) <= 22 else lots_txt[:20] + "…")
+                with d_m4:
+                    total_exigences = sum(len(d.traceability_items) for d in current_processed_docs_list)
+                    st.metric("Exigences sourcées", f"{total_exigences} items")
+
+                if validation_rep.duplicate_docs:
+                    for d_info in validation_rep.duplicate_docs:
+                        st.info(f"ℹ️ **Doublon détecté** : `{d_info['fichier']}` est identique à `{d_info['doublon_de']}` ({d_info['motif']}).")
+
+                if validation_rep.unreadable_pages_detail:
+                    for un_info in validation_rep.unreadable_pages_detail:
+                        st.warning(
+                            f"⚠️ **Pages scannées sans OCR** dans `{un_info['fichier']}` : pages {', '.join(str(p) for p in un_info['pages_non_lues'])} "
+                            f"(sur {un_info['total_pages']} pages). Ces pages ne contiennent pas de texte extractible et sont signalées sans prétendre les avoir lues."
+                        )
+
+                st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+                st.markdown("##### 📑 Fiches d'analyse unitaire par document :")
+
+                for doc_idx, pdoc in enumerate(current_processed_docs_list, start=1):
+                    badge_icon = "✅" if pdoc.status == "VALIDE" else ("⚠️" if pdoc.status == "ATTENTION" else "❌")
+                    lot_label = f" · Lots: {', '.join(pdoc.lots_concernes)}" if pdoc.lots_concernes else ""
+
+                    with st.expander(
+                        f"{badge_icon} [{pdoc.category_label}] {pdoc.filename} ({pdoc.page_count} p./f., {pdoc.total_char_count:,} car.{lot_label})",
+                        expanded=False,
+                    ):
+                        c_d1, c_d2 = st.columns([1, 2])
+                        with c_d1:
+                            st.write(f"**Format :** `{pdoc.format}`")
+                            st.write(f"**Catégorie :** {pdoc.category_label}")
+                            st.write(f"**Empreinte MD5 :** `{pdoc.md5_hash[:12]}…`")
+                            st.write(f"**Pages exploitables :** {pdoc.readable_pages_count} / {pdoc.page_count}")
+                            if pdoc.unreadable_pages_count > 0:
+                                st.write(f"**Pages scannées non lues :** ⚠️ {pdoc.unreadable_pages_count}")
+                            st.write(f"**Articles identifiés :** {len(pdoc.articles_index)}")
+                            st.write(f"**Exigences sourcées :** {len(pdoc.traceability_items)}")
+
+                        with c_d2:
+                            if pdoc.traceability_items:
+                                st.markdown("**Exemples d'exigences avec traçabilité exacte :**")
+                                for it in pdoc.traceability_items[:5]:
+                                    dom = str(it.get("domaine", "Exigence")).replace("_", " ").capitalize()
+                                    st.markdown(
+                                        f"- <span style='font-size:11px; color:#3B82F6; font-weight:600;'>[{dom}]</span> "
+                                        f"{it['item'][:110]}… "
+                                        f"<span style='font-size:10px; color:#64748B;'>`p.{it['page']} | {it.get('article', '')}`</span>",
+                                        unsafe_allow_html=True,
+                                    )
+                                if len(pdoc.traceability_items) > 5:
+                                    st.caption(f"… et {len(pdoc.traceability_items) - 5} autre(s) exigence(s) tracée(s) dans ce document.")
+                            else:
+                                st.caption("Données globales du document prêtes pour le croisement.")
+
         generate_crossed_btn = st.button(
             f"🚀 Croiser les {total_uploaded} document(s) & Générer le Mémoire Technique Complet"
             if total_uploaded > 0
@@ -2838,28 +2994,42 @@ elif page == "Génération":
             extraits_par_categorie: dict[str, str] = {}
             source_filenames: list[str] = []
 
-            with st.status("📖 Extraction multi-formats (PDF, Word, Excel) des 5 catégories de documents…", expanded=True) as status:
+            with st.status("📖 Traitement unitaire & Extraction granulaire des documents…", expanded=True) as status:
                 try:
+                    # Traiter et auditer chaque document unitairement
+                    processed_docs_execution = []
                     for cat_title, file_list in categories_input:
                         if not file_list:
                             st.write(f"⚪ **{cat_title}** : *Aucun fichier déposé*")
                             continue
-                        cat_text, cat_logs = extract_category_documents(file_list, cat_title)
+                        cat_text_parts = []
                         for f in file_list:
-                            if f is not None:
-                                source_filenames.append(f.name)
-                        for log_line in cat_logs:
-                            st.write(f"✅ {cat_title} → {log_line}")
-                        if cat_text:
-                            combined_sections.append(cat_text)
-                            extraits_par_categorie[cat_title] = cat_text
+                            if f is None:
+                                continue
+                            source_filenames.append(f.name)
+                            pdoc = dp.process_single_document(f)
+                            pdoc = dp.analyze_single_document(pdoc)
+                            processed_docs_execution.append(pdoc)
+                            cat_text_parts.append(
+                                f"================ {cat_title.upper()} : {pdoc.filename} (Lots: {', '.join(pdoc.lots_concernes) or 'Tous'}) ================\n{pdoc.full_text}"
+                            )
+                            scan_note = f" (⚠️ {pdoc.unreadable_pages_count} p. scannées non-OCR)" if pdoc.unreadable_pages_count > 0 else ""
+                            st.write(f"✅ {cat_title} → `{pdoc.filename}` ({pdoc.page_count} p., {pdoc.total_char_count:,} car.){scan_note}")
+
+                        full_cat_text = "\n\n".join(cat_text_parts)
+                        if full_cat_text:
+                            combined_sections.append(full_cat_text)
+                            extraits_par_categorie[cat_title] = full_cat_text
 
                     if not combined_sections:
                         raise ValueError("Aucun texte exploitable n'a pu être extrait des documents fournis.")
 
                     full_dossier_text = "\n\n".join(combined_sections)
+                    consolidation = dp.consolidate_processed_documents_for_generation(processed_docs_execution)
+                    traceability_matrix = consolidation["traceability_matrix"]
+
                     status.update(
-                        label=f"✅ Extraction terminée ({len(source_filenames)} fichier(s), {len(full_dossier_text):,} caractères extraits)",
+                        label=f"✅ Traitement unitaire terminé ({len(source_filenames)} fichier(s), {len(full_dossier_text):,} caractères, {len(traceability_matrix)} exigences tracées)",
                         state="complete",
                     )
                 except ValueError as e:
@@ -2883,15 +3053,16 @@ elif page == "Génération":
                     st.stop()
 
             # ── Tâche B : Rédaction du Mémoire Technique ────────────────────
-            with st.status("✍️ Rédaction du Mémoire Technique sur-mesure (ordre du RC, quantités DPGF, règle anti-invention)…", expanded=True) as status:
+            with st.status("✍️ Rédaction du Mémoire Technique sur-mesure (ordre du RC, traçabilité exacte, règle anti-invention)…", expanded=True) as status:
                 try:
-                    st.write("Rédaction détaillée phase par phase en croisant CCTP + DPGF + Moyens Entreprise…")
+                    st.write("Rédaction détaillée phase par phase en croisant CCTP + DPGF + Moyens Entreprise + Traçabilité…")
                     memoire_md = rediger_memoire(
                         api_key,
                         llm_provider,
                         analyse,
                         profil_text,
                         extraits_par_categorie=extraits_par_categorie,
+                        traceability_matrix=traceability_matrix,
                     )
                     st.write("✅ Rédaction du Mémoire Technique terminée.")
                     status.update(label="✅ Mémoire Technique rédigé avec succès", state="complete")

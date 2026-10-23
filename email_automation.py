@@ -36,6 +36,7 @@ from typing import Callable, Optional
 
 from docx import Document
 from fpdf import FPDF
+import document_processor as dp
 
 
 AUTOMATION_DB_PATH = Path("archives") / "automation_state.json"
@@ -352,23 +353,49 @@ def find_company_profile_by_email(sender_email: str, default_config_entreprise: 
 
 
 def _extract_lots_from_mail_text(subject: str, body: str) -> list[str]:
-    """Détection heuristique rapide des lots mentionnés dans l'objet et le corps du mail."""
+    """
+    Détection intelligente des lots mentionnés dans l'objet et le corps du mail :
+    - Si le client mentionne 'Tous les lots', 'TCE', 'Tous corps d'état', 'Macro-lot' ou 'Entreprise générale',
+      retourne ['TOUS LOTS (TCE)'] pour conserver et fusionner l'intégralité des CCTP et DPGF du dossier.
+    - Si le client mentionne un ou plusieurs numéros de lots (ex: Lot 01, Lot 02, Lot 05), retourne tous ces lots.
+    - Si le client mentionne un ou plusieurs corps d'état (ex: VRD + Gros Œuvre + Électricité), les retourne tous.
+    """
     combined = f"{subject}\n{body}"
+    if re.search(
+        r"\b(tous\s+les\s+lots|tous\s+lots|tce|tous\s+corps\s+d['’]état|tous\s+corps\s+d['’]etat|macro[\s\-]*lot|entreprise\s+g[ée]n[ée]rale|march[ée]\s+global)\b",
+        combined,
+        flags=re.IGNORECASE,
+    ):
+        return ["TOUS LOTS (TCE)"]
+
     lots_found: list[str] = []
-    for match in re.finditer(r"\b(?:lot\s*n?°?\s*(\d{1,2})\b(?:\s*[-:–]?\s*([A-Za-zÀ-ÿ0-9\s/&',]{2,40}))?)", combined, flags=re.IGNORECASE):
+    for match in re.finditer(
+        r"\b(?:lots?\s*n?°?\s*(\d{1,2})\b(?:\s*[-:–]?\s*([A-Za-zÀ-ÿ0-9\s/&',]{2,45}))?)",
+        combined,
+        flags=re.IGNORECASE,
+    ):
         lot_num = match.group(1).zfill(2)
+        if lot_num == "00":
+            continue
         lot_title = (match.group(2) or "").strip(" .,-:;()\n\r\t")
         label = f"Lot {lot_num}" + (f" - {lot_title}" if lot_title else "")
         if label not in lots_found:
             lots_found.append(label)
 
-    # Mots-clés corps d'état BTP courants si pas de numéro de lot explicite
+    # Détecter également les énumérations du type "Lots 01, 02 et 04"
+    for enum_match in re.finditer(r"\blots?\s+((?:\d{1,2}\s*(?:,|et|&|\+|/)\s*)+\d{1,2})\b", combined, flags=re.IGNORECASE):
+        for num_str in re.findall(r"\d{1,2}", enum_match.group(1)):
+            lot_num = num_str.zfill(2)
+            if lot_num != "00" and not any(l.startswith(f"Lot {lot_num}") for l in lots_found):
+                lots_found.append(f"Lot {lot_num}")
+
+    # Mots-clés corps d'état BTP courants (peut en détecter un ou plusieurs si le client répond sur plusieurs lots)
     corps_etat = [
-        "Gros Œuvre", "Gros Oeuvre", "VRD", "Terrassement", "Voirie",
-        "Électricité", "Electricité", "CFA", "CFO", "Plomberie", "CVC", "Chauffage",
-        "Menuiserie", "Charpente", "Couverture", "Étanchéité", "Peinture",
-        "Carrelage", "Sols", "Cloisons", "Plâtrerie", "Faux-plafonds", "Serrurerie",
-        "Métallerie", "Façade", "ITE", "Désamiantage", "Démolition", "Espaces Verts",
+        "Gros Œuvre", "Gros Oeuvre", "Maçonnerie", "VRD", "Terrassement", "Voirie", "Assainissement",
+        "Électricité", "Electricité", "CFA", "CFO", "Plomberie", "CVC", "Chauffage", "Ventilation", "Climatisation",
+        "Menuiserie", "Charpente", "Couverture", "Zinguerie", "Étanchéité", "Etancheite", "Peinture", "Ravalement",
+        "Carrelage", "Chapes", "Sols", "Cloisons", "Plâtrerie", "Platrerie", "Faux-plafonds", "Serrurerie",
+        "Métallerie", "Façade", "ITE", "Isolation", "Désamiantage", "Démolition", "Curage", "Espaces Verts",
     ]
     if not lots_found:
         for ce in corps_etat:
@@ -448,8 +475,8 @@ def _heuristic_classify_single_file(filename: str, text_preview: str, target_lot
         if any(k in fname_low for k in ("lot_00", "lot 00", "lot00", "general", "général", "communes", "commun")):
             return "CCTP", "CCTP Général (Lot 00 / prescriptions communes à tous les lots) — Retenu"
 
-        # Si le mail précise un ou plusieurs lots visés, vérifier si ce CCTP correspond au lot demandé ou à un autre lot
-        if target_lots:
+        # Si le mail précise un ou plusieurs lots visés (et n'est pas en mode TOUS LOTS / TCE)
+        if target_lots and "TOUS LOTS (TCE)" not in target_lots:
             target_joined = " ".join(target_lots).lower()
             target_nums = set(re.findall(r"\blot\s*n?°?\s*0*(\d+)\b", target_joined))
             file_lot_nums = set(re.findall(r"lot[\s_\-]*0*(\d+)", fname_low))
@@ -465,9 +492,8 @@ def _heuristic_classify_single_file(filename: str, text_preview: str, target_lot
 
             if file_lot_nums and target_nums:
                 if file_lot_nums & target_nums or "0" in file_lot_nums:
-                    return "CCTP", f"CCTP correspondant au lot visé dans le mail ({', '.join(target_lots)}) — Retenu"
+                    return "CCTP", f"CCTP correspondant au(x) lot(s) visé(s) ({', '.join(target_lots)}) — Retenu"
                 else:
-                    # Vérifier si un mot-clé métier correspond quand même
                     if target_keywords and any(kw in fname_low for kw in target_keywords):
                         return "CCTP", f"CCTP correspondant au corps d'état visé ({', '.join(target_lots)}) — Retenu"
                     return (
@@ -476,7 +502,6 @@ def _heuristic_classify_single_file(filename: str, text_preview: str, target_lot
                     )
 
             if target_keywords:
-                # Si le fichier mentionne explicitement un autre corps d'état connu et aucun des mots-clés cibles
                 other_trades = [
                     "gros_oeuvre", "gros-oeuvre", "gros oeuvre", "vrd", "electricite", "électricité",
                     "plomberie", "cvc", "menuiserie", "peinture", "carrelage", "charpente", "etancheite", "serrurerie",
@@ -489,7 +514,7 @@ def _heuristic_classify_single_file(filename: str, text_preview: str, target_lot
                         f"CCTP d'un autre lot ({', '.join(matched_other)}) écarté (lot demandé : {', '.join(target_lots)})",
                     )
 
-        return "CCTP", "CCTP technique retenu pour la génération"
+        return "CCTP", "CCTP technique retenu pour la génération (fusion multi-lots)"
 
     # Par défaut : si c'est un tableur -> DPGF, sinon si "mémoire" dans le texte -> ENTREPRISE, sinon CCTP
     if fname_low.endswith((".xlsx", ".xls", ".csv")):
@@ -628,6 +653,30 @@ def auto_triage_email_and_files(
     for att in attachments:
         cat = file_classifications[att.name]["categorie"]
         categorized_files.setdefault(cat, []).append(att)
+
+    # Sécurité anti-erreur : si tous les CCTP ont été écartés par erreur alors qu'il n'y a aucun CCTP retenu,
+    # réintégrer automatiquement tous les CCTP pour couvrir tous les lots présents dans le dossier.
+    if not categorized_files["CCTP"] and categorized_files["IGNORED_CCTP"]:
+        for att in categorized_files["IGNORED_CCTP"]:
+            file_classifications[att.name]["categorie"] = "CCTP"
+            file_classifications[att.name]["motif"] = "CCTP retenu automatiquement (couverture complète des lots fournis)"
+            categorized_files["CCTP"].append(att)
+        categorized_files["IGNORED_CCTP"] = []
+
+    # Si aucun lot précis n'était mentionné dans le mail (ou mode TOUS LOTS), extraire automatiquement tous les lots des CCTP retenus
+    if not lots_vises or "TOUS LOTS (TCE)" in lots_vises:
+        detected_from_files: list[str] = []
+        for att in categorized_files["CCTP"]:
+            for m_lot in re.finditer(r"lot[\s_\-]*0*(\d{1,2})(?:[\s_\-]+([A-Za-zÀ-ÿ0-9_\-]+))?", att.name, flags=re.IGNORECASE):
+                lnum = m_lot.group(1).zfill(2)
+                if lnum == "00":
+                    continue
+                ltitle = (m_lot.group(2) or "").replace("_", " ").replace("-", " ").strip()
+                lbl = f"Lot {lnum}" + (f" - {ltitle}" if ltitle else "")
+                if lbl not in detected_from_files:
+                    detected_from_files.append(lbl)
+        if detected_from_files:
+            lots_vises = detected_from_files
 
     # Si l'entreprise n'était pas connue dans la base mais qu'un nom a été détecté dans le mail/les pièces
     if entreprise_profil is None and nom_entreprise_detecte:
@@ -1065,6 +1114,24 @@ def process_incoming_email_pipeline(
 
     # Étape 1 : Décompression des .zip et récupération des fichiers
     unpacked_files, unpack_notes = unpack_attachments_and_zips(raw_attachments)
+
+    # Étape 1.5 : Traitement et audit unitaire de chaque pièce jointe
+    processed_docs_unit = []
+    for uf in unpacked_files:
+        try:
+            pdoc = dp.process_single_document(uf)
+            pdoc = dp.analyze_single_document(pdoc)
+            processed_docs_unit.append(pdoc)
+        except Exception:
+            pass
+
+    if processed_docs_unit:
+        val_rep = dp.validate_processed_documents(processed_docs_unit)
+        for d_info in val_rep.duplicate_docs:
+            unpack_notes.append(f"Doublon détecté : « {d_info['fichier']} » (identique à « {d_info['doublon_de']} »)")
+        for u_info in val_rep.unreadable_pages_detail:
+            unpack_notes.append(f"Pages scannées sans OCR : « {u_info['fichier']} » (pages {u_info['pages_non_lues']})")
+
     update_job_status(job_id, statut="Tri des CCTP en cours", extraction_notes=unpack_notes)
     add_automation_log(
         "Tri des CCTP en cours",
@@ -1183,17 +1250,35 @@ def process_incoming_email_pipeline(
     full_dossier_text = "\n\n".join(combined_sections)
     profil_text = build_profil_text_fn(entreprise_profil) if entreprise_profil else ""
 
+    traceability_matrix = []
+    if processed_docs_unit:
+        try:
+            consolidation = dp.consolidate_processed_documents_for_generation(processed_docs_unit)
+            traceability_matrix = consolidation.get("traceability_matrix", [])
+        except Exception:
+            pass
+
     try:
         if api_key and not is_simulation:
             try:
                 analyse = analyse_cctp_fn(api_key, provider, full_dossier_text)
-                memoire_md = rediger_memoire_fn(
-                    api_key,
-                    provider,
-                    analyse,
-                    profil_text,
-                    extraits_par_categorie=extraits_par_categorie,
-                )
+                try:
+                    memoire_md = rediger_memoire_fn(
+                        api_key,
+                        provider,
+                        analyse,
+                        profil_text,
+                        extraits_par_categorie=extraits_par_categorie,
+                        traceability_matrix=traceability_matrix,
+                    )
+                except TypeError:
+                    memoire_md = rediger_memoire_fn(
+                        api_key,
+                        provider,
+                        analyse,
+                        profil_text,
+                        extraits_par_categorie=extraits_par_categorie,
+                    )
             except Exception:
                 analyse, memoire_md = _build_fallback_structured_memoire(
                     subject=subject,
