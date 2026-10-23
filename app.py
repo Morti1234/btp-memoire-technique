@@ -1699,13 +1699,15 @@ def rediger_memoire(
     profil_entreprise: Optional[str] = None,
     extraits_par_categorie: Optional[dict[str, str]] = None,
     traceability_matrix: Optional[list[dict[str, Any]]] = None,
+    prescriptions_marche: Optional[list[Any]] = None,
 ) -> str:
     """
     Demande au LLM de rédiger le mémoire technique complet en croisant :
     1. L'analyse JSON multi-documents (RC + CCTP + DPGF + Annexes + Docs Entreprise)
     2. Le profil de l'entreprise enregistré dans l'application (s'il existe)
     3. Les extraits directs des 5 catégories de documents uploadés
-    4. La matrice de traçabilité granulaire (Document, Page, Article)
+    4. Les prescriptions communes et spécifiques filtrées (CCTP Lot 00, RC, Lot ciblé)
+    5. La matrice de traçabilité granulaire (Document, Page, Article)
     """
     user_content = (
         "## 1. Analyse structurée et croisée des documents uploadés (JSON)\n"
@@ -1733,8 +1735,19 @@ def rediger_memoire(
                 user_content += f"\n### {cat_label}\n{extrait_borne}\n"
         user_content += "\n"
 
+    if prescriptions_marche:
+        user_content += "## 4. Prescriptions contractuelles communes et spécifiques filtrées\n"
+        user_content += "Ces prescriptions issues du CCTP Général (Lot 00), du RC et du lot ciblé sont OBLIGATOIRES. Intègre rigoureusement chaque prescription avec sa méthode d'exécution et sa source contractuelle :\n"
+        for p in prescriptions_marche:
+            p_dict = p.to_dict() if hasattr(p, "to_dict") else p
+            if p_dict.get("applicabilite_lot_cible", True):
+                ref_src = f"(Source: {p_dict.get('document_source')}, p. {p_dict.get('page')}, {p_dict.get('article', '')})"
+                contra_note = f" ⚠️ [CONTRADICTION À SIGNALER : {p_dict['contradiction_detail']}]" if p_dict.get("is_contradiction") else ""
+                user_content += f"- **[{p_dict.get('categorie')}] [{p_dict.get('caractere', 'OBLIGATOIRE')}]** {p_dict.get('texte')} *{ref_src}*{contra_note}\n"
+        user_content += "\n"
+
     if traceability_matrix:
-        user_content += "## 4. Matrice de traçabilité des exigences du marché (Document / Page / Article)\n"
+        user_content += "## 5. Matrice de traçabilité des exigences du marché (Document / Page / Article)\n"
         user_content += "Appuie tes développements méthodologiques sur ces exigences sourcées en citant systématiquement les références contractuelles :\n"
         for item in traceability_matrix[:40]:
             dom = str(item.get("domaine", "Exigence")).replace("_", " ").capitalize()
@@ -3027,6 +3040,13 @@ elif page == "Génération":
                     full_dossier_text = "\n\n".join(combined_sections)
                     consolidation = dp.consolidate_processed_documents_for_generation(processed_docs_execution)
                     traceability_matrix = consolidation["traceability_matrix"]
+                    all_market_prescriptions = dp.extract_market_prescriptions(processed_docs_execution)
+                    detected_lots = [lot for d in processed_docs_execution for lot in d.lots_concernes if lot and not any(k in str(lot).upper() for k in ("TOUS", "TCE"))]
+                    target_lot_selected = detected_lots[0] if detected_lots else "LOT_02"
+                    filtered_prescriptions, market_contradictions = dp.filter_prescriptions_for_target_lot(
+                        all_market_prescriptions,
+                        target_lot=target_lot_selected,
+                    )
 
                     status.update(
                         label=f"✅ Traitement unitaire terminé ({len(source_filenames)} fichier(s), {len(full_dossier_text):,} caractères, {len(traceability_matrix)} exigences tracées)",
@@ -3063,6 +3083,7 @@ elif page == "Génération":
                         profil_text,
                         extraits_par_categorie=extraits_par_categorie,
                         traceability_matrix=traceability_matrix,
+                        prescriptions_marche=filtered_prescriptions,
                     )
                     st.write("✅ Rédaction du Mémoire Technique terminée.")
                     status.update(label="✅ Mémoire Technique rédigé avec succès", state="complete")

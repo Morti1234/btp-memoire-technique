@@ -1251,10 +1251,14 @@ def process_incoming_email_pipeline(
     profil_text = build_profil_text_fn(entreprise_profil) if entreprise_profil else ""
 
     traceability_matrix = []
+    filtered_prescriptions = []
     if processed_docs_unit:
         try:
             consolidation = dp.consolidate_processed_documents_for_generation(processed_docs_unit)
             traceability_matrix = consolidation.get("traceability_matrix", [])
+            all_prescr = dp.extract_market_prescriptions(processed_docs_unit)
+            target_lot_clean = lots_vises[0] if lots_vises else "LOT_02"
+            filtered_prescriptions, _ = dp.filter_prescriptions_for_target_lot(all_prescr, target_lot=target_lot_clean)
         except Exception:
             pass
 
@@ -1270,15 +1274,26 @@ def process_incoming_email_pipeline(
                         profil_text,
                         extraits_par_categorie=extraits_par_categorie,
                         traceability_matrix=traceability_matrix,
+                        prescriptions_marche=filtered_prescriptions,
                     )
                 except TypeError:
-                    memoire_md = rediger_memoire_fn(
-                        api_key,
-                        provider,
-                        analyse,
-                        profil_text,
-                        extraits_par_categorie=extraits_par_categorie,
-                    )
+                    try:
+                        memoire_md = rediger_memoire_fn(
+                            api_key,
+                            provider,
+                            analyse,
+                            profil_text,
+                            extraits_par_categorie=extraits_par_categorie,
+                            traceability_matrix=traceability_matrix,
+                        )
+                    except TypeError:
+                        memoire_md = rediger_memoire_fn(
+                            api_key,
+                            provider,
+                            analyse,
+                            profil_text,
+                            extraits_par_categorie=extraits_par_categorie,
+                        )
             except Exception:
                 analyse, memoire_md = _build_fallback_structured_memoire(
                     subject=subject,
